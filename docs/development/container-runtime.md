@@ -1,7 +1,9 @@
 # Container runtime: running the Linux runtime in DroidSpaces instead of proot
 
 Status: implemented (branch `feat/droidspaces-runtime`); `:app:compileDebugKotlin` and the
-container runtime unit tests pass, see §7. Device validation: `notes/impl-device-validation.md`.
+container runtime unit tests pass, see §7. A full steam session was validated on the target
+phone in a DroidSpaces container (READY/firstFrame, Steam Big Picture presented through the
+in-app compositor): `notes/impl-device-validation.md` §4.
 Owner: DroidDeck fork. This document is the contract for the parallel implementation;
 keep it in sync when interfaces change.
 
