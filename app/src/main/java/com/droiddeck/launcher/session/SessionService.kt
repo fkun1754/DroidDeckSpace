@@ -33,22 +33,25 @@ import com.droiddeck.launcher.audio.DirectAudioRelayComponent
 import com.droiddeck.launcher.audio.PulseAudioComponent
 import com.droiddeck.launcher.core.CpuCores
 import com.droiddeck.launcher.core.DeviceReport
-import com.droiddeck.launcher.core.HostEnvironment
 import com.droiddeck.launcher.core.DeviceSupport
 import com.droiddeck.launcher.core.SessionLogCapture
 import com.droiddeck.launcher.core.NetworkReport
 import com.droiddeck.launcher.core.SessionPart
 import com.droiddeck.launcher.core.FileUtils
-import com.droiddeck.launcher.core.HostProcess
 import com.droiddeck.launcher.frontend.GameLaunchLink
 import com.droiddeck.launcher.input.FakeInputWriter
 import com.droiddeck.launcher.input.SteamControllerBle
 import com.droiddeck.launcher.runtime.BwrapSpawner
+import com.droiddeck.launcher.runtime.GuestCommand
 import com.droiddeck.launcher.runtime.LinuxNetworkLinkComponent
 import com.droiddeck.launcher.runtime.LinuxRuntime
-import com.droiddeck.launcher.runtime.ProotFastPath
 import com.droiddeck.launcher.runtime.UserApps
-import com.droiddeck.launcher.wayland.WaylandCompositor
+import com.droiddeck.launcher.runtime.container.ContainerControl
+import com.droiddeck.launcher.runtime.container.ContainerEnv
+import com.droiddeck.launcher.runtime.container.ContainerPaths
+import com.droiddeck.launcher.runtime.container.ContainerRuntime
+import com.droiddeck.launcher.runtime.container.ContainerSession
+import com.droiddeck.launcher.runtime.container.SessionSpec
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -65,11 +68,11 @@ class SessionService : Service() {
     private val stopLock = Any()
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
-    private var sessionPid = -1
+    @Volatile private var containerSession: ContainerSession? = null
     private val auxiliaryProcesses = HashMap<Int, Long>()
     private val auxiliaryProcessesLock = Any()
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var suspendController: SessionSuspendController? = null
+    private var suspendController: SuspendController? = null
     private val steamDownloadMonitor = SteamDownloadMonitor()
     private val downloadMonitorExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "steam-download-monitor").apply { isDaemon = true } }
     private var downloadMonitorTask: Runnable? = null
@@ -474,7 +477,6 @@ class SessionService : Service() {
         val runtimeDir = File(filesDir, ".wayland-rt").apply { mkdirs() }
         killStragglers()
         val stillStarting = { gen == sessionGen && SessionState.running }
-        val prootPack = LinuxRuntime.patchedProot(this) || AddonPack.PROOT.await(this, stillStarting)
         val directAudioPack = AddonPack.DIRECTAUDIO.await(this, stillStarting)
         val systemVulkan = SystemVulkanDriver.usesDefault(SessionPrefs.linuxDriver(this))
         val powerVrPack = !systemVulkan || (stillStarting() && AddonPack.POWERVR.await(this, stillStarting))
@@ -495,16 +497,12 @@ class SessionService : Service() {
                 Toast.makeText(this, R.string.session_directaudio_missing, Toast.LENGTH_LONG).show()
             }
         }
-        if (!LinuxRuntime.patchedProot(this)) {
-            if (SessionPrefs.allowStockProot(this)) {
-                Log.w(TAG, "proot: patched proot missing; droiddeck-stock-proot allows the rootfs copy")
-            } else {
-                val message = getString(R.string.session_proot_missing)
-                Log.e(TAG, "$message (pack ready=$prootPack)")
-                failSession(gen, "PROOT_MISSING", message, -1)
-                stopSession(-1, gen)
-                return
-            }
+        if (!ContainerRuntime.isAvailable(this)) {
+            val message = getString(R.string.session_container_unavailable)
+            Log.e(TAG, "$message (root or the DroidSpaces CLI is unavailable)")
+            failSession(gen, "CONTAINER_UNAVAILABLE", message, -1)
+            stopSession(-1, gen)
+            return
         }
         val agentEnvironment = runCatching { com.droiddeck.launcher.agent.AgentEnv.beginSession(this) }
             .onFailure { Log.w(TAG, "agent environment skipped", it) }
@@ -540,10 +538,10 @@ class SessionService : Service() {
             return
         }
         val sessionLog = File(sessionDir, "session.log")
-        val prootLine = "== proot: ${LinuxRuntime.prootBinary(this).path} (${LinuxRuntime.prootSource(this)})"
-        Log.i(TAG, prootLine)
-        runCatching { sessionLog.appendText(prootLine + "\n") }
-            .onFailure { Log.w(TAG, "could not write the proot line to ${sessionLog.path}", it) }
+        val containerLine = "== container: ${ContainerPaths.CONTAINER_NAME} (${SessionState.mode})"
+        Log.i(TAG, containerLine)
+        runCatching { sessionLog.appendText(containerLine + "\n") }
+            .onFailure { Log.w(TAG, "could not write the container line to ${sessionLog.path}", it) }
 
         Log.i(TAG, GpuClockPin.start(this))
         Log.i(TAG, GameThreadHints.start(this))
@@ -568,7 +566,6 @@ class SessionService : Service() {
             return
         }
         if (steamHere) guest.add("BL_EPIC_APP_ID=" + com.droiddeck.launcher.stores.epic.EpicClient.shortcutAppId)
-        val fastPathAt = guest.size
 
         val pulse = startAudio(guest, sessionDir, directAudioPack)
         startVkBridge(guest, sessionDir)
@@ -635,13 +632,6 @@ class SessionService : Service() {
         // an Adreno, or Setup's switch), and graphics-report.txt for every session.
         if (GraphicsReport.detailed(this)) guest.add("BL_GAME_LOGS=1")
         GraphicsReport.begin(this, sessionDir, guest)
-        val shellGuest = ArrayList(guest).apply {
-            add("SHELL=/bin/bash")
-            add("TERM=xterm-256color")
-            add("/bin/bash")
-            add("-c")
-            add("cd \"\$HOME\" && exec /bin/bash -i")
-        }
         val desktopGuest = ArrayList(guest)
         guest.add(LinuxRuntime.SESSION_SCRIPT)
         guest.add(SessionState.mode)
@@ -664,54 +654,32 @@ class SessionService : Service() {
 
         FileUtils.clear(File(LinuxRuntime.liveDir(this), "shm"))
 
-        val binds = sessionBinds(controllersOn, fakeInputDir, sessionDir, guest, sessionRoot, runtimeDir)
-        val fastPathKey = if (ProotFastPath.enabled(this)) {
-            val prootBinds = LinuxRuntime.binds(
-                this, sessionRoot, runtimeDir, Environment.getExternalStorageDirectory(), binds,
-            )
-            val root = LinuxRuntime.rootDir(this)
-            ProotFastPath.key(root, prootBinds)?.also { key ->
-                val env = ProotFastPath.guestEnv(root, prootBinds, key)
-                guest.addAll(fastPathAt, env)
-                shellGuest.addAll(fastPathAt, env)
-                Log.i(TAG, "proot: fast path on (${prootBinds.size} binds)")
-            } ?: run {
-                Log.w(TAG, "proot: fast path off - ${prootBinds.size} binds (it holds ${ProotFastPath.MAX_BINDS}) or a path it cannot be told")
-                null
-            }
-        } else null
-
-        val command = LinuxRuntime.command(
-            this, sessionRoot, runtimeDir, Environment.getExternalStorageDirectory(), binds, guest,
-        )
-
-        val hostEnv = HostEnvironment()
-        hostEnv["PROOT_LOADER"] = LinuxRuntime.prootLoader(this).path
-        hostEnv["PROOT_TMP_DIR"] = LinuxRuntime.prootTempDir(this).path
-        if (SessionPrefs.prootNoSeccomp(this)) {
-            hostEnv["PROOT_NO_SECCOMP"] = "1"
-            Log.i(TAG, "proot: seccomp acceleration off by request")
-        }
-        fastPathKey?.let { ProotFastPath.hostEnv(it).let { (k, v) -> hostEnv[k] = v } }
-        for (key in listOf("PROOT_PROFILE", "PROOT_PROFILE_SLOW_US")) {
-            guest.lastOrNull { it.startsWith("$key=") }?.substringAfter('=')?.let { hostEnv[key] = it }
-        }
-        val prootLibs = LinuxRuntime.prootLibraryPath(this)
-        if (prootLibs.isNotEmpty()) hostEnv["LD_LIBRARY_PATH"] = prootLibs
-
-        val terminalCommand = LinuxRuntime.command(
-            this, sessionRoot, runtimeDir, Environment.getExternalStorageDirectory(), binds, shellGuest,
-        )
-        val terminalHostEnvironment = LinkedHashMap(System.getenv())
-        hostEnv.asArray().forEach { entry ->
+        val componentBinds = sessionBinds(controllersOn, fakeInputDir, sessionDir, guest, sessionRoot, runtimeDir)
+        val extraBinds = LinuxRuntime.binds(
+            this, sessionRoot, runtimeDir, Environment.getExternalStorageDirectory(), componentBinds,
+        ).map { spec -> if (spec.contains(':')) spec else "$spec:$spec" }
+        // The guest argv is everything from droiddeck-session on; the rest is the session's env.
+        val scriptAt = guest.indexOf(LinuxRuntime.SESSION_SCRIPT)
+        val env = LinkedHashMap<String, String>()
+        for (i in 0 until (if (scriptAt >= 0) scriptAt else guest.size)) {
+            val entry = guest[i]
             val separator = entry.indexOf('=')
-            if (separator > 0) terminalHostEnvironment[entry.substring(0, separator)] = entry.substring(separator + 1)
+            if (separator > 0 && !entry.startsWith("-")) env[entry.substring(0, separator)] = entry.substring(separator + 1)
         }
+        val args = if (scriptAt >= 0) guest.subList(scriptAt + 2, guest.size).toList() else emptyList()
+        val spec = SessionSpec.builder()
+            .mode(SessionState.mode)
+            .sessionId(sessionDir.name)
+            .env(env)
+            .args(args)
+            .extraBinds(extraBinds)
+            .uid(android.os.Process.myUid())
+            .gid(android.os.Process.myUid())
+            .build()
         if (gen == sessionGen && SessionState.running) {
-            SessionTerminal.prepare(terminalCommand, terminalHostEnvironment.map { (key, value) -> "$key=$value" }.toTypedArray(), root, gen)
-            val (fastPathName, _) = ProotFastPath.hostEnv("")
-            BottomDesktop.prepare(desktopGuest, binds, sessionRoot,
-                hostEnv.asArray().filterNot { it.startsWith("$fastPathName=") }.toTypedArray(), root, sessionDir, gen,
+            SessionTerminal.prepare(GuestCommand.terminalCommand(),
+                arrayOf("PATH=/system/bin:/system/xbin:/vendor/bin"), root, gen)
+            BottomDesktop.prepare(desktopGuest, componentBinds, sessionRoot, emptyArray(), root, sessionDir, gen,
             ) { gen == sessionGen && SessionState.running }
         }
 
@@ -743,52 +711,43 @@ class SessionService : Service() {
             return
         }
 
-        val line = command.joinToString(" ") {
-            it.replace("\\", "\\\\").replace(" ", "\\ ")
-        }
         watchLaunchRequests(sessionRoot)
         watchSyncWanted(root)
         EsyncPacks.fetchInBackground(this, root)
-        val pid = HostProcess.start(line, hostEnv.asArray(), root, { status ->
-            if (gen != sessionGen) {
-                Log.i(TAG, "an earlier session's process ended ($status); the current one carries on")
-                return@start
-            }
-            val program = programStatus(sessionRoot)
-            Log.i(TAG, "session ended: $status" + if (program != null) " (program $program)" else "")
-            stopSession(program ?: status ?: -1, gen)
-        }, null, sessionLog.takeIf { "PROOT_PROFILE=1" in hostEnv.asArray() })
-        Log.i(TAG, "session pid $pid, log ${sessionLog.path}")
-        if (gen != sessionGen || !SessionState.running) {
-            Log.i(TAG, "session stopped while its guest was starting; taking it down")
-            if (gen == sessionGen) {
-                launchWatcher?.stopWatching()
-                launchWatcher = null
-                syncWatcher?.stopWatching()
-                syncWatcher = null
-                components.reversed().forEach { runCatching { it.stop() } }
-                components.clear()
-            }
-            if (pid > 1) Thread({ teardown(pid) }, "session-teardown").start()
-            return
-        }
-        sessionPid = pid
-        if (pid > 1) {
-            raiseTracer(pid, gen)
-            SessionEvents.guestStarted(pid)
-        } else {
-            SessionEvents.record("guest.start_failed", mapOf("pid" to pid))
-            failSession(gen, "GUEST_START_FAILED", "The guest process could not be started", pid)
+        // SessionFiles.stage() above put the container init into the rootfs; droidspaces pre-checks
+        // that path inside the rootfs, so the container cannot start before the stage has run.
+        // TODO(container): componentBinds alone should be enough; LinuxRuntime.binds() still carries
+        // the proot-era fake sysfs/GPU emulation mounts and is redundant with ContainerEnv's binds.
+        val session = try {
+            ContainerRuntime.start(this, spec)
+        } catch (e: Exception) {
+            Log.e(TAG, "the container session could not be started", e)
+            failSession(gen, "CONTAINER_START_FAILED", e.message ?: "The container session could not be started", -1)
             stopSession(-1, gen)
             return
         }
+        var pid = -1
+        for (attempt in 0 until 3) {
+            pid = runCatching { session.pid(this) }.getOrDefault(-1)
+            if (pid > 1) break
+            try { Thread.sleep(300) } catch (e: InterruptedException) { return }
+        }
+        Log.i(TAG, "container session ${session.name()} pid $pid, log ${sessionLog.path}")
+        if (gen != sessionGen || !SessionState.running) {
+            Log.i(TAG, "session stopped while its container was starting; taking it down")
+            runCatching { session.stop(this) }
+            return
+        }
+        containerSession = session
+        runCatching { LinuxRuntime.setLastBinds(ContainerEnv.binds(this, spec) + extraBinds) }
+        if (pid > 1) {
+            SessionEvents.guestStarted(pid)
+        } else {
+            SessionEvents.record("guest.start_unknown", mapOf("pid" to pid))
+        }
+        watchContainerSession(session, gen)
         if (gen == sessionGen && SessionState.running) {
-            suspendController = SessionSuspendController(
-                sessionRoot = { sessionPid },
-                helperRoots = {
-                    components.mapNotNull { it.suspendPid().takeIf { pid -> pid > 1 } } +
-                        listOfNotNull(BottomDesktop.suspendPid.takeIf { it > 1 })
-                },
+            suspendController = ContainerSuspendController(
                 suspendAudio = {
                     if (!pulse.setSinkSuspended(true)) Log.w(TAG, "could not suspend audio sink")
                     if (!pulse.setMicSuspended(true)) Log.w(TAG, "could not suspend microphone source")
@@ -801,32 +760,7 @@ class SessionService : Service() {
                     if (!pulse.setSinkSuspended(false)) Log.w(TAG, "could not resume audio sink")
                     if (!pulse.setMicSuspended(false)) Log.w(TAG, "could not resume microphone source")
                 },
-                zramControl = File(filesDir, "${LinuxRuntime.DIR}/tmp/.bl-zram"),
                 clockControl = File(filesDir, "${LinuxRuntime.DIR}/tmp/.bl-clock"),
-                pagedOut = { processes, unacknowledged, residentKb, swapKb, swapBeforeKb, millis ->
-                    Log.i(TAG, "paged out $processes processes ($unacknowledged unacknowledged) in $millis ms: " +
-                        "resident ${residentKb / 1024} MB, zram ${swapBeforeKb / 1024} -> ${swapKb / 1024} MB")
-                    mainHandler.post {
-                        SessionEvents.record("session.paged_out", mapOf(
-                            "processes" to processes, "unacknowledged" to unacknowledged, "residentMb" to residentKb / 1024,
-                            "swapMb" to swapKb / 1024, "swapBeforeMb" to swapBeforeKb / 1024, "ms" to millis,
-                        ))
-                    }
-                },
-                readBackAllowed = { SessionPrefs.ramCapMb(this) == 0 },
-                pagedIn = { processes, swapKb, swapBeforeKb, availableKb, millis ->
-                    if (processes == 0) {
-                        Log.i(TAG, "left ${swapBeforeKb / 1024} MB in zram after resume (RAM cap, or ${availableKb / 1024} MB available is too little)")
-                    } else {
-                        Log.i(TAG, "read back $processes processes in $millis ms: zram ${swapBeforeKb / 1024} -> ${swapKb / 1024} MB")
-                    }
-                    mainHandler.post {
-                        SessionEvents.record("session.paged_in", mapOf(
-                            "processes" to processes, "swapMb" to swapKb / 1024, "swapBeforeMb" to swapBeforeKb / 1024,
-                            "availableMb" to availableKb / 1024, "ms" to millis,
-                        ))
-                    }
-                },
             )
             updateDownloadMonitoring()
             mainHandler.post { updateSuspendPolicy() }
@@ -938,7 +872,7 @@ class SessionService : Service() {
         if (SessionPrefs.glThread(this)) guest.add("mesa_glthread=true")
         if (SessionPrefs.noGlError(this)) guest.add("MESA_NO_ERROR=1")
         guest.add("MESA_DISK_CACHE_DATABASE=1")
-        guest.addAll(GpuStatsComponent.guestEnv(LinuxRuntime.rootDir(this)))
+        guest.addAll(GpuStatsComponent.guestEnv(LinuxRuntime.hudDir(this)))
         guest.add("GLIBC_TUNABLES=glibc.pthread.rseq=0:glibc.malloc.top_pad=16777216")
         if (SessionState.mode == MODE_STEAM) guest.add("BL_MANGOAPP=" + (if (SessionPrefs.mangoapp(this)) "1" else "0"))
         SessionState.steamClientArch = if (steamHere) SessionPrefs.steamClientArch(this) else null
@@ -1115,7 +1049,6 @@ class SessionService : Service() {
         runtimeDir: File,
     ): ArrayList<String> {
         val binds = ArrayList<String>()
-        if (controllersOn) binds.add(fakeInputDir.path + ":/dev/input")
         if (controllersOn) binds.addAll(deckBinds)
         if (controllersOn) inputSysfs?.let {
             it.attach(this)
@@ -1141,12 +1074,12 @@ class SessionService : Service() {
             components.add(cpuStat)
             binds.add(cpuStat.file.path + ":/proc/stat")
         }
-        val gpuMem = GpuMemComponent(File(LinuxRuntime.rootDir(this), "run/droiddeck-hud/gpu-mem"), LinuxRuntime.rootDir(this))
+        val gpuMem = GpuMemComponent(File(LinuxRuntime.hudDir(this), "gpu-mem"), LinuxRuntime.rootDir(this))
         if (gpuMem.prepare()) {
             gpuMem.attach(this)
             components.add(gpuMem)
         }
-        val gpuStats = GpuStatsComponent(File(filesDir, "session/sys/kgsl-3d0"), LinuxRuntime.rootDir(this))
+        val gpuStats = GpuStatsComponent(File(filesDir, "session/sys/kgsl-3d0"), LinuxRuntime.rootDir(this), LinuxRuntime.hudDir(this))
         if (gpuStats.prepare()) {
             gpuStats.attach(this)
             components.add(gpuStats)
@@ -1154,8 +1087,6 @@ class SessionService : Service() {
         }
         if (controllersOn) components.add(RumbleComponent().also { it.attach(this) })
         val home = File(LinuxRuntime.rootDir(this), "root")
-        File(home, "Storage").mkdirs()
-        binds.add(Environment.getExternalStorageDirectory().path + ":/root/Storage")
         val library = GameStorage.effective(this)
         steamLibraryMounts = emptyMap()
         var storageDiagnosticLibrary: File? = null
@@ -1228,9 +1159,6 @@ class SessionService : Service() {
         if (storageDiagnosticLibrary != null && library != null) libraries.add(SecondaryLibrary.CARD_GUESTS[0] to library.label)
         val gamesLibraries = GameStorage.gamesFolderLibraries(this)
         if (gamesLibraries.isNotEmpty()) {
-            var room = if (ProotFastPath.enabled(this)) {
-                ProotFastPath.MAX_BINDS - LinuxRuntime.binds(this, sessionRoot, runtimeDir, Environment.getExternalStorageDirectory(), binds).size
-            } else Int.MAX_VALUE
             for (games in gamesLibraries) {
                 if (games.host.path + ":" + games.guest !in binds) continue
                 val problem = GameStorage.prepare(this, games.host.path)
@@ -1240,12 +1168,7 @@ class SessionService : Service() {
                 }
                 try {
                     val extra = SecondaryLibrary.binds(filesDir, games.host, listOf(games.guest)).drop(1)
-                    if (extra.size > room) {
-                        Log.w(TAG, "steam library: ${games.host} needs ${extra.size} binds, $room left for the fast path; not a library this session")
-                        continue
-                    }
                     binds.addAll(extra)
-                    room -= extra.size
                     libraries.add(games.guest to games.label)
                     Log.i(TAG, "steam library: ${games.host} -> ${games.guest} (\"${games.label}\")")
                 } catch (e: Exception) {
@@ -1270,15 +1193,8 @@ class SessionService : Service() {
                 continue
             }
             try {
-                val room = if (ProotFastPath.enabled(this)) {
-                    ProotFastPath.MAX_BINDS - LinuxRuntime.binds(this, sessionRoot, runtimeDir, Environment.getExternalStorageDirectory(), binds).size
-                } else Int.MAX_VALUE
                 val content = SecondaryLibrary.contentPath(entry.host)
                 val extra = SecondaryLibrary.binds(filesDir, entry.host, listOf(entry.guest), content = content)
-                if (extra.size > room) {
-                    Log.w(TAG, "added steam library: ${entry.path} needs ${extra.size} binds, $room left for the fast path; not a library this session")
-                    continue
-                }
                 File(LinuxRuntime.rootDir(this), entry.guest.removePrefix("/")).mkdirs()
                 binds.addAll(extra)
                 libraries.add(entry.guest to entry.label)
@@ -1299,17 +1215,10 @@ class SessionService : Service() {
             if (problem != null) {
                 Log.w(TAG, "x86-64 steam library: $problem")
             } else try {
-                val room = if (ProotFastPath.enabled(this)) {
-                    ProotFastPath.MAX_BINDS - LinuxRuntime.binds(this, sessionRoot, runtimeDir, Environment.getExternalStorageDirectory(), binds).size
-                } else Int.MAX_VALUE
                 val extra = SecondaryLibrary.binds(filesDir, x64, listOf(GameStorage.X64_CARD_GUEST)).drop(1)
-                if (extra.size > room) {
-                    Log.w(TAG, "x86-64 steam library: $x64 needs ${extra.size} binds, $room left for the fast path; not a library this session")
-                } else {
-                    binds.addAll(extra)
-                    x64Libraries.put(org.json.JSONObject().put("path", GameStorage.X64_CARD_GUEST).put("label", library.label.replace('"', ' ').replace('\\', ' ')))
-                    Log.i(TAG, "x86-64 steam library: $x64 -> ${GameStorage.X64_CARD_GUEST} (\"${library.label}\")")
-                }
+                binds.addAll(extra)
+                x64Libraries.put(org.json.JSONObject().put("path", GameStorage.X64_CARD_GUEST).put("label", library.label.replace('"', ' ').replace('\\', ' ')))
+                Log.i(TAG, "x86-64 steam library: $x64 -> ${GameStorage.X64_CARD_GUEST} (\"${library.label}\")")
             } catch (e: Exception) {
                 Log.w(TAG, "x86-64 steam library: $x64 private directories could not be prepared", e)
             }
@@ -1321,14 +1230,7 @@ class SessionService : Service() {
                 continue
             }
             try {
-                val room = if (ProotFastPath.enabled(this)) {
-                    ProotFastPath.MAX_BINDS - LinuxRuntime.binds(this, sessionRoot, runtimeDir, Environment.getExternalStorageDirectory(), binds).size
-                } else Int.MAX_VALUE
                 val extra = SecondaryLibrary.binds(filesDir, entry.x64Host, listOf(entry.x64Guest)).drop(1)
-                if (extra.size > room) {
-                    Log.w(TAG, "x86-64 steam library: ${entry.x64Host} needs ${extra.size} binds, $room left for the fast path; not a library this session")
-                    continue
-                }
                 binds.addAll(extra)
                 x64Libraries.put(org.json.JSONObject().put("path", entry.x64Guest).put("label", entry.label))
             } catch (e: Exception) {
@@ -1356,17 +1258,18 @@ class SessionService : Service() {
         return binds
     }
 
-    private fun teardown(prootPid: Int, expectedStartTime: Long? = null) {
-        fun stillSameProcess(): Boolean = expectedStartTime == null || readStat(prootPid)?.second == expectedStartTime
+    /** Stops a host-side helper process the service started (terminal/desktop), not the container. */
+    private fun teardown(helperPid: Int, expectedStartTime: Long? = null) {
+        fun stillSameProcess(): Boolean = expectedStartTime == null || readStat(helperPid)?.second == expectedStartTime
         if (!stillSameProcess()) return
-        val tree = descendants(prootPid)
+        val tree = descendants(helperPid)
         if (!stillSameProcess()) return
         saveWineRegistries(tree)
-        android.os.Process.sendSignal(prootPid, 15)
-        if (!waitForExit(prootPid, GRACE_MS)) {
+        android.os.Process.sendSignal(helperPid, 15)
+        if (!waitForExit(helperPid, GRACE_MS)) {
             if (!stillSameProcess()) return
-            Log.w(TAG, "proot $prootPid did not exit on SIGTERM; killing it")
-            android.os.Process.killProcess(prootPid)
+            Log.w(TAG, "helper $helperPid did not exit on SIGTERM; killing it")
+            android.os.Process.killProcess(helperPid)
         }
         var killed = 0
         for ((pid, started) in tree) {
@@ -1375,7 +1278,7 @@ class SessionService : Service() {
             android.os.Process.killProcess(pid)
             killed++
         }
-        if (killed > 0) Log.i(TAG, "swept $killed process(es) proot left behind")
+        if (killed > 0) Log.i(TAG, "swept $killed helper process(es)")
     }
 
     private fun clearCachedApps() {
@@ -1435,8 +1338,8 @@ class SessionService : Service() {
         return try { Pair(fields[1].toInt(), fields[19].toLong()) } catch (e: NumberFormatException) { null }
     }
 
-    private fun askSteamToExit(prootPid: Int) {
-        if (!File("/proc/$prootPid").exists()) return
+    private fun askSteamToExit(session: ContainerSession) {
+        if (!containerRunning()) return
         val request = File(LinuxRuntime.sessionRoot(this), "steam-stop")
         try {
             request.writeText("")
@@ -1445,12 +1348,71 @@ class SessionService : Service() {
             return
         }
         val started = System.currentTimeMillis()
-        if (waitForExit(prootPid, STEAM_PICKUP_MS) || request.exists()) {
+        if (waitForContainerExit(session, STEAM_PICKUP_MS) || request.exists()) {
             request.delete()
             return
         }
-        val exited = waitForExit(prootPid, STEAM_EXIT_MS)
+        val exited = waitForContainerExit(session, STEAM_EXIT_MS)
         Log.i(TAG, "Steam client ${if (exited) "exited" else "did not exit"} after ${System.currentTimeMillis() - started} ms")
+    }
+
+    // `show --json` alone: cheap enough to poll and safe while the guest is frozen, unlike
+    // ContainerSession.isAlive(), whose probe runs a command inside the (possibly stopped) container.
+    // `state()` returns null when the CLI call itself failed, so two misses in a row are needed
+    // before a live session is declared gone.
+    private fun containerRunning(): Boolean = ContainerRuntime.state(this) == "RUNNING"
+
+    private fun waitForContainerExit(session: ContainerSession, timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (containerGone()) return true
+            try { Thread.sleep(200) } catch (e: InterruptedException) { return false }
+        }
+        return containerGone()
+    }
+
+    private fun containerGone(): Boolean {
+        repeat(2) { attempt ->
+            if (containerRunning()) return false
+            if (attempt == 0) {
+                try { Thread.sleep(150) } catch (e: InterruptedException) { return false }
+            }
+        }
+        return true
+    }
+
+    /** Polls the container's liveness and ends the session when it disappears. */
+    private fun watchContainerSession(session: ContainerSession, gen: Int) {
+        Thread({
+            var misses = 0
+            while (gen == sessionGen && SessionState.running) {
+                if (containerRunning()) misses = 0 else if (++misses >= 2) break
+                try { Thread.sleep(CONTAINER_POLL_MS) } catch (e: InterruptedException) { return@Thread }
+            }
+            if (gen != sessionGen || !SessionState.running) return@Thread
+            val exit = runCatching { session.exitCode(this) }.getOrNull()
+            val program = programStatus(LinuxRuntime.sessionRoot(this))
+            appendContainerLog(session)
+            val status = program ?: exit ?: -1
+            Log.i(TAG, "container session ended: exit=${exit ?: "unknown"} program=${program ?: "none"}")
+            mainHandler.post { stopSession(status, gen) }
+        }, "container-watch").apply { isDaemon = true; start() }
+    }
+
+    private fun appendContainerLog(session: ContainerSession) {
+        runCatching {
+            val tail = session.tailLog(this, 40)
+            if (tail.isBlank()) return@runCatching
+            SessionState.logFile?.appendText("== container log ==\n$tail\n")
+        }.onFailure { Log.w(TAG, "could not read the container log", it) }
+    }
+
+    private fun stopContainerSession(session: ContainerSession) {
+        runCatching { session.stop(this) }
+            .onFailure { Log.w(TAG, "could not stop the container", it) }
+        if (!waitForContainerExit(session, CONTAINER_STOP_MS)) {
+            Log.w(TAG, "container ${session.name()} did not report itself stopped")
+        }
     }
 
     private fun waitForExit(pid: Int, timeoutMs: Long): Boolean {
@@ -1583,39 +1545,11 @@ class SessionService : Service() {
         File(directory, STEAM_GAME_REQUEST + ".tmp").delete()
     }
 
-    private fun killGuestLeftovers() {
-        val me = android.os.Process.myPid()
-        val rootfs = try { File(filesDir, "linuxfs").canonicalPath } catch (e: Exception) { return } + "/"
-        val procs = File("/proc").listFiles { f -> f.name.all { it.isDigit() } } ?: return
-        var killed = 0
-        for (proc in procs) {
-            val pid = proc.name.toIntOrNull() ?: continue
-            if (pid == me) continue
-            val exe = try { File(proc, "exe").canonicalPath } catch (e: Exception) { continue }
-            if (!exe.startsWith(rootfs)) continue
-            android.os.Process.killProcess(pid)
-            killed++
-        }
-        if (killed > 0) Log.w(TAG, "killed $killed guest process(es) proot no longer tracked")
-    }
-
     private fun killStragglers() {
-        val me = android.os.Process.myPid()
-        val procs = File("/proc").listFiles { f -> f.name.all { it.isDigit() } } ?: return
-        var killed = 0
-        for (proc in procs) {
-            val pid = proc.name.toIntOrNull() ?: continue
-            if (pid == me) continue
-            val cmdline = try {
-                File(proc, "cmdline").readBytes().toString(Charsets.UTF_8).replace('\u0000', ' ')
-            } catch (e: Exception) {
-                continue
-            }
-            if (STRAGGLERS.none { cmdline.contains(it) }) continue
-            android.os.Process.killProcess(pid)
-            killed++
-        }
-        if (killed > 0) Log.w(TAG, "killed $killed leftover process(es) of a previous session")
+        // Guest processes live in the container's PID namespace; ContainerRuntime.start() stops a
+        // residual container of the same name before starting the new one.
+        runCatching { ContainerRuntime.stop(this) }
+            .onFailure { Log.w(TAG, "could not stop a residual container", it) }
     }
 
     private var launchWatcher: android.os.FileObserver? = null
@@ -1989,24 +1923,6 @@ class SessionService : Service() {
         }
     }
 
-    private fun raiseTracer(pid: Int, gen: Int) {
-        Thread({
-            try {
-                Thread.sleep(2000)
-            } catch (e: InterruptedException) {
-                return@Thread
-            }
-            if (gen != sessionGen || sessionPid != pid) return@Thread
-            val nice = try {
-                WaylandCompositor.nativeRaisePriority(pid, TRACER_NICE)
-            } catch (t: Throwable) {
-                Log.w(TAG, "tracer priority", t)
-                return@Thread
-            }
-            Log.i(TAG, "proot tracer $pid: nice $nice (asked for $TRACER_NICE)")
-        }, "tracer-priority").start()
-    }
-
     private fun failSession(gen: Int, code: String, message: String, status: Int?) {
         synchronized(stopLock) {
             if (gen == sessionGen) SessionEvents.fail(code, message, status)
@@ -2049,8 +1965,8 @@ class SessionService : Service() {
         launchWatcher = null
         syncWatcher?.stopWatching()
         syncWatcher = null
-        val prootPid = sessionPid
-        sessionPid = -1
+        val session = containerSession
+        containerSession = null
         val auxiliary = synchronized(auxiliaryProcessesLock) {
             auxiliaryProcesses.toMap().also { auxiliaryProcesses.clear() }
         }
@@ -2076,13 +1992,12 @@ class SessionService : Service() {
         com.droiddeck.launcher.input.SteamTouchDevice.release()
         val steamClientMayRun = SessionState.mode == MODE_STEAM || SessionState.mode == MODE_DESKTOP
         val finishAfterTeardown: () -> Unit = {
-            if (prootPid > 1 || auxiliary.isNotEmpty()) {
+            if (session != null || auxiliary.isNotEmpty()) {
                 Thread({
-                    if (prootPid > 1 && steamClientMayRun) askSteamToExit(prootPid)
+                    if (session != null && steamClientMayRun) askSteamToExit(session)
                     com.droiddeck.launcher.stores.gog.GogComet.end(stoppedSession)
                     auxiliary.forEach { (pid, started) -> teardown(pid, started) }
-                    if (prootPid > 1) teardown(prootPid)
-                    killGuestLeftovers()
+                    if (session != null) stopContainerSession(session)
                     pruneSystemVulkanRuntime()
                     finishSessionStop(status, stoppedGen, collectEnded)
                     if (launcherEnded) importLauncherGames()
@@ -2096,7 +2011,7 @@ class SessionService : Service() {
                 }, "gog-session-stop").start()
             }
         }
-        if (prootPid > 1) acquireLocks()
+        if (session != null) acquireLocks()
         if (controller != null) controller.closeAndResume(finishAfterTeardown) else finishAfterTeardown()
     }
 
@@ -2338,9 +2253,153 @@ class SessionService : Service() {
             else "an Xbox 360 controller")
     }
 
+    private interface SuspendController {
+        fun freeze(pageOut: Boolean, completion: (Boolean) -> Unit)
+        fun cancelFreeze()
+        fun resume(completion: (Boolean) -> Unit)
+        fun closeAndResume(completion: () -> Unit)
+    }
+
+    /**
+     * Container-mode suspend: the guest is a PID namespace the app cannot signal, so freeze and
+     * resume go through the guest control script. The proot-era zram page-out handshake (SIGURG
+     * to each libblsession process, host /proc reads) is unavailable; the kernel still compresses
+     * under memory pressure, the guest just is not paged out explicitly.
+     */
+    private inner class ContainerSuspendController(
+        private val suspendAudio: () -> Unit,
+        private val resumeAudio: () -> Unit,
+        private val clockControl: File?,
+    ) : SuspendController {
+        private val executor = java.util.concurrent.Executors.newSingleThreadExecutor {
+            Thread(it, "session-suspend").apply { isDaemon = true }
+        }
+        @Volatile private var closing = false
+        @Volatile private var cancelled = false
+        @Volatile private var frozen = false
+        @Volatile private var frozenSince = 0L
+
+        override fun freeze(pageOut: Boolean, completion: (Boolean) -> Unit) {
+            cancelled = false
+            submit({
+                var complete = false
+                try {
+                    if (pageOut) Log.i(TAG, "zram page-out is not available inside the container; freezing without it")
+                    runAudio(suspendAudio)
+                    ContainerControl.freeze(this@SessionService)
+                    complete = awaitStopped()
+                } catch (e: Exception) {
+                    Log.w(TAG, "could not freeze the container session", e)
+                } finally {
+                    if (complete) {
+                        frozen = true
+                        frozenSince = System.nanoTime()
+                    } else {
+                        runCatching { ContainerControl.resume(this@SessionService) }
+                        runAudio(resumeAudio)
+                    }
+                }
+                completion(complete)
+            }, { completion(false) })
+        }
+
+        override fun cancelFreeze() {
+            cancelled = true
+        }
+
+        override fun resume(completion: (Boolean) -> Unit) {
+            submit({
+                advanceClock()
+                runAudio(resumeAudio)
+                val resumed = try {
+                    ContainerControl.resume(this@SessionService)
+                    awaitResumed()
+                } catch (e: Exception) {
+                    Log.w(TAG, "could not resume the container session", e)
+                    false
+                }
+                if (resumed) frozen = false
+                completion(resumed)
+            }, { completion(false) })
+        }
+
+        override fun closeAndResume(completion: () -> Unit) {
+            closing = true
+            submit({
+                advanceClock()
+                if (frozen) runCatching { ContainerControl.resume(this@SessionService) }
+                frozen = false
+                completion()
+                executor.shutdown()
+            }, completion)
+        }
+
+        private fun awaitStopped(): Boolean {
+            val deadline = System.currentTimeMillis() + FREEZE_TIMEOUT_MS
+            while (System.currentTimeMillis() < deadline) {
+                if (closing || cancelled) return false
+                val processes = runCatching { ContainerControl.ps(this@SessionService) }.getOrNull() ?: return false
+                if (processes.isNotEmpty() && processes.all { stopped(it) }) return true
+                try { Thread.sleep(60) } catch (e: InterruptedException) { return false }
+            }
+            return false
+        }
+
+        private fun awaitResumed(): Boolean {
+            val deadline = System.currentTimeMillis() + RESUME_TIMEOUT_MS
+            while (System.currentTimeMillis() < deadline) {
+                val processes = runCatching { ContainerControl.ps(this@SessionService) }.getOrNull() ?: return false
+                if (processes.none { it.stat.startsWith("T") }) return true
+                try { Thread.sleep(60) } catch (e: InterruptedException) { return false }
+            }
+            return false
+        }
+
+        private fun stopped(process: ContainerControl.GuestProcess): Boolean =
+            process.pid <= 1 || process.comm == CTL_COMMAND ||
+                process.stat.startsWith("T") || process.stat.startsWith("Z") || process.stat.startsWith("X")
+
+        private fun advanceClock() {
+            val since = frozenSince.takeIf { it > 0 } ?: return
+            frozenSince = 0L
+            val control = clockControl?.takeIf { it.isFile && it.length() >= CLOCK_BYTES } ?: return
+            runCatching {
+                java.io.RandomAccessFile(control, "rw").use { file ->
+                    val bytes = ByteArray(CLOCK_BYTES)
+                    file.readFully(bytes)
+                    val shift = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN).long
+                        .coerceAtLeast(0L) + (System.nanoTime() - since).coerceAtLeast(0L)
+                    file.seek(0L)
+                    file.write(java.nio.ByteBuffer.allocate(CLOCK_BYTES)
+                        .order(java.nio.ByteOrder.LITTLE_ENDIAN).putLong(shift).array())
+                }
+            }
+        }
+
+        private fun runAudio(action: () -> Unit) {
+            try {
+                action()
+            } catch (e: Exception) {
+            }
+        }
+
+        private fun submit(task: () -> Unit, rejected: () -> Unit) {
+            try {
+                executor.execute { task() }
+            } catch (e: java.util.concurrent.RejectedExecutionException) {
+                rejected()
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "SessionService"
-        private const val TRACER_NICE = -6
+        private const val CONTAINER_POLL_MS = 1_000L
+        private const val CONTAINER_STOP_MS = 15_000L
+        private const val FREEZE_TIMEOUT_MS = 8_000L
+        private const val RESUME_TIMEOUT_MS = 5_000L
+        private const val CTL_COMMAND = "droiddeck-container-ctl"
+        private const val CLOCK_BYTES = 8
         private const val MIC_RELEASE_TIMEOUT_MS = 5_000L
         private const val TU_DEBUG_SWITCH = "Download/droiddeck-tu-debug"
         private const val GAME_TU_DEBUG = "DROIDDECK_GAME_TU_DEBUG"
@@ -2377,8 +2436,6 @@ class SessionService : Service() {
         private const val ACTION_STOP_AUXILIARY = "com.droiddeck.launcher.STOP_AUXILIARY"
         private const val ACTION_AUXILIARY_EXITED = "com.droiddeck.launcher.AUXILIARY_EXITED"
         private const val EXTRA_AUXILIARY_PID = "auxiliaryPid"
-        private val STRAGGLERS = listOf("droiddeck-session", "gamescope", "Xwayland", "steamrtarm64",
-            "steamwebhelper", "linuxfs/opt/android-host/proot", "/libproot.so", "pulseaudio/libpulseaudio.so")
         private const val GRACE_MS = 1200L
         private const val WINE_SAVE_MS = 3000L
         private const val STEAM_PICKUP_MS = 1500L

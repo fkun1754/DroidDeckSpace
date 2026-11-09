@@ -8,14 +8,15 @@ import android.system.Os
 import android.util.Base64
 import android.util.Log
 import com.droiddeck.launcher.core.FileUtils
-import com.droiddeck.launcher.core.HostProcess
-import com.droiddeck.launcher.session.SessionPrefs
 import org.json.JSONObject
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import com.droiddeck.launcher.runtime.container.ContainerPaths
+import com.droiddeck.launcher.runtime.container.DroidspacesCli
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 object BwrapSpawner {
@@ -348,61 +349,44 @@ object BwrapSpawner {
     }
 
     private fun run(context: Context, plan: Plan, client: LocalSocket, out: DataOutputStream, id: Int) {
-        val cmd = LinuxRuntime.prootPrefix(context, plan.root, plan.cwd)
+        // TODO(container): run a real bwrap inside the container (needs --allow-sandboxing) instead
+        // of dropping the sandbox: the container has root and user namespaces, but the guest-side
+        // droiddeck-bwrap shim is still a proot-era emulation. Until then the command runs in the
+        // session's own container with the environment the sandbox asked for.
+        val command = GuestCommand.containerArgv(plan.envTool, plan.env, plan.cwd, plan.argv)
+        val cancelled = AtomicBoolean(false)
         val verbose = plan.env["DROIDDECK_PROOT_VERBOSE"]?.toIntOrNull()
-        if (verbose != null) { cmd.add(1, "-v"); cmd.add(2, verbose.toString()) }
-        plan.binds.forEach { cmd.add("-b"); cmd.add(it.spec) }
-        cmd.add(plan.envTool)
-        cmd.add("-i")
-        plan.env.forEach { (k, v) -> cmd.add("$k=$v") }
-        cmd.addAll(plan.argv)
-        val builder = ProcessBuilder(cmd).redirectErrorStream(true).directory(plan.root)
-        builder.environment().apply {
-            clear()
-            put("PROOT_LOADER", LinuxRuntime.prootLoader(context).path)
-            put("PROOT_TMP_DIR", LinuxRuntime.prootTempDir(context).path)
-            if (SessionPrefs.prootNoSeccomp(context)) put("PROOT_NO_SECCOMP", "1")
-            LinuxRuntime.prootLibraryPath(context).takeIf { it.isNotEmpty() }?.let { put("LD_LIBRARY_PATH", it) }
-        }
-        val process = builder.start()
-        val pid = HostProcess.pidOf(process)
-        com.droiddeck.launcher.session.OrphanReaper.keep(pid)
-        Log.i(TAG, "sandbox $id pid $pid: ${plan.argv.joinToString(" ")} (${plan.binds.size} binds)")
-        synchronized(out) { frame(out, 'P', pid.toString().toByteArray()) }
-        Thread({
+        Log.i(TAG, "sandbox $id: ${plan.argv.joinToString(" ")} (container exec, ${plan.binds.size} binds dropped)")
+        runCatching { synchronized(out) { frame(out, 'P', "0".toByteArray()) } }
+        val watcher = Thread({
             try { while (client.inputStream.read() >= 0) {   } }
             catch (e: IOException) {   }
-            if (process.isAlive) {
+            if (!cancelled.get()) {
                 Log.i(TAG, "sandbox $id: its bwrap is gone; stopping it")
-                if (pid > 0) {
-                    runCatching { android.system.Os.kill(pid, android.system.OsConstants.SIGQUIT) }
-                } else {
-                    process.destroy()
-                }
-                try {
-                    if (!process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) process.destroyForcibly()
-                } catch (_: InterruptedException) {
-                }
+                cancelled.set(true)
             }
         }, "bwrap-$id-watch").apply { isDaemon = true; start() }
-        val buffer = ByteArray(16384)
-        var logged = 0
-        process.inputStream.use { stream ->
-            while (true) {
-                val n = try { stream.read(buffer) } catch (e: IOException) { -1 }
-                if (n < 0) break
-                if (logged < 4096 || verbose != null) {
-                    String(buffer, 0, if (verbose != null) n else minOf(n, 4096 - logged)).lines().filter { it.isNotBlank() }
-                        .forEach { Log.i(TAG, "sandbox $id: $it") }
-                    logged += n
+        try {
+            GuestCommand.ensureContainer(context)
+            val result = DroidspacesCli.execUnlimited(context, ContainerPaths.CONTAINER_NAME, Process.myUid(),
+                command,
+                { line ->
+                    if (verbose != null) Log.i(TAG, "sandbox $id: $line")
+                    runCatching { synchronized(out) { frame(out, 'O', (line + "\n").toByteArray()) } }
+                }, cancelled)
+            Log.i(TAG, "sandbox $id exited ${result.exitCode}")
+            runCatching { synchronized(out) { frame(out, 'X', result.exitCode.toString().toByteArray()) } }
+        } catch (e: Exception) {
+            Log.e(TAG, "sandbox $id", e)
+            runCatching {
+                synchronized(out) {
+                    frame(out, 'E', (e.message ?: e.toString()).toByteArray())
+                    frame(out, 'X', "1".toByteArray())
                 }
-                try { synchronized(out) { frame(out, 'O', buffer.copyOf(n)) } } catch (e: IOException) { break }
             }
+        } finally {
+            watcher.interrupt()
         }
-        val status = process.waitFor()
-        com.droiddeck.launcher.session.OrphanReaper.release(pid)
-        Log.i(TAG, "sandbox $id exited $status")
-        runCatching { synchronized(out) { frame(out, 'X', status.toString().toByteArray()) } }
     }
 
     private fun frame(out: DataOutputStream, kind: Char, payload: ByteArray) {

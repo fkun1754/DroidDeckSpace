@@ -336,23 +336,7 @@ fi
 sink_output="${staging_dir}/sink-out"
 "${repo_root}/tools/directaudio/fetch.sh" "${repo_root}" "${sink_output}"
 "${repo_root}/tools/aaudio-sink/build.sh" "${pa_source}" "${sink_output}"
-proot_out="${repo_root}/app/src/main/jniLibs/arm64-v8a"
-proot_sources=$(cd "${repo_root}/tools/proot" && find . -type f ! -name '*.pyc' | LC_ALL=C sort | xargs shasum -a 256 | shasum -a 256 | cut -d' ' -f1)
-proot_inputs=$(printf '%s\n' "${proot_sources}" "${ndk_version}" | shasum -a 256 | cut -d' ' -f1)
-if [[ -f "${proot_out}/libproot.so" && -f "${proot_out}/libproot-loader.so" \
-        && "$(cat "${proot_out}/.proot-inputs" 2>/dev/null)" = "${proot_inputs}" ]] \
-        && (cd "${proot_out}" && shasum -a 256 -c .proot-outputs >/dev/null 2>&1); then
-    echo "proot: sources unchanged, keeping ${proot_out}/libproot.so"
-else
-    proot_stage="${staging_dir}/proot"
-    if ! restore_step proot "${proot_inputs}" "${proot_stage}"; then
-        "${repo_root}/tools/proot/build.sh" "${proot_stage}"
-        save_step proot "${proot_inputs}" "${proot_stage}"
-    fi
-    install -m755 "${proot_stage}/libproot.so" "${proot_stage}/libproot-loader.so" "${proot_out}/"
-    echo "${proot_inputs}" > "${proot_out}/.proot-inputs"
-    (cd "${proot_out}" && shasum -a 256 libproot.so libproot-loader.so > .proot-outputs)
-fi
+jni_out="${repo_root}/app/src/main/jniLibs/arm64-v8a"
 
 syncthing_src="${repo_root}/tools/syncthing/syncthing-android/syncthing/src/github.com/syncthing/syncthing"
 git -C "${repo_root}" submodule update --init --recursive tools/syncthing/syncthing-android
@@ -362,17 +346,17 @@ syncthing_inputs=$(printf '%s\n' "$(cd "${repo_root}" && shasum -a 256 tools/syn
     "$(git -C "${syncthing_src}" diff --binary HEAD | shasum -a 256)" \
     "$(cd "${syncthing_src}" && git ls-files -z --others --exclude-standard | xargs -0 shasum -a 256)" \
     "${ndk_version}" | shasum -a 256 | cut -d' ' -f1)
-if [[ -f "${proot_out}/libsyncthingnative.so" \
-        && "$(cat "${proot_out}/.syncthing-inputs" 2>/dev/null)" = "${syncthing_inputs}" ]]; then
-    echo "syncthing: sources unchanged, keeping ${proot_out}/libsyncthingnative.so"
+if [[ -f "${jni_out}/libsyncthingnative.so" \
+        && "$(cat "${jni_out}/.syncthing-inputs" 2>/dev/null)" = "${syncthing_inputs}" ]]; then
+    echo "syncthing: sources unchanged, keeping ${jni_out}/libsyncthingnative.so"
 else
     syncthing_stage="${staging_dir}/syncthing"
     if ! restore_step syncthing "${syncthing_inputs}" "${syncthing_stage}"; then
         "${repo_root}/tools/syncthing/build.sh" "${syncthing_stage}"
         save_step syncthing "${syncthing_inputs}" "${syncthing_stage}"
     fi
-    install -m755 "${syncthing_stage}/libsyncthingnative.so" "${proot_out}/"
-    echo "${syncthing_inputs}" > "${proot_out}/.syncthing-inputs"
+    install -m755 "${syncthing_stage}/libsyncthingnative.so" "${jni_out}/"
+    echo "${syncthing_inputs}" > "${jni_out}/.syncthing-inputs"
 fi
 
 bundle_dir="${staging_dir}/pulseaudio-bundle"

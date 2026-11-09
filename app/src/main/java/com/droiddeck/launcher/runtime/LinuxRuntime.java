@@ -1,15 +1,12 @@
 package com.droiddeck.launcher.runtime;
 
-import com.droiddeck.launcher.core.AddonPack;
 import android.content.Context;
 import android.os.Process;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.StructStat;
-import android.system.StructUtsname;
 import com.droiddeck.launcher.gpu.SystemVulkanDriver;
-import com.droiddeck.launcher.session.SessionPrefs;
-
+import com.droiddeck.launcher.runtime.container.ContainerPaths;
 
 import java.io.File;
 import java.io.IOException;
@@ -57,60 +54,15 @@ public final class LinuxRuntime {
         return dir;
     }
 
-    public static File prootTempDir(Context context) {
-        File dir = new File(liveDir(context), "proot");
+    /** Host side of the container's /run/droiddeck-hud bind. */
+    public static File hudDir(Context context) {
+        File dir = new File(context.getFilesDir(), "hud");
         dir.mkdirs();
         return dir;
     }
 
-    private static final String HOST_DIR = "opt/android-host";
-    public static final String PROOT_PACK = "add-on pack";
-    public static final String PROOT_ROOTFS = "rootfs fallback";
-    public static final String PROOT_MISSING = "missing";
-
-    private static File rootfsProot(Context context) {
-        return new File(rootDir(context), HOST_DIR + "/proot");
-    }
-
-    private static File rootfsLoader(Context context) {
-        return new File(rootDir(context), HOST_DIR + "/loader");
-    }
-
-    private static boolean rootfsProotReady(Context context) {
-        return rootfsProot(context).isFile() && rootfsLoader(context).isFile();
-    }
-
-    public static boolean patchedProot(Context context) {
-        return AddonPack.PROOT.installed(context);
-    }
-
-    public static File prootBinary(Context context) {
-        if (AddonPack.PROOT.installed(context)) return AddonPack.PROOT.file(context, "libproot.so");
-        if (SessionPrefs.allowStockProot(context)) return rootfsProot(context);
-        return AddonPack.PROOT.file(context, "libproot.so");
-    }
-
-    public static File prootLoader(Context context) {
-        if (AddonPack.PROOT.installed(context)) return AddonPack.PROOT.file(context, "libproot-loader.so");
-        if (SessionPrefs.allowStockProot(context)) return rootfsLoader(context);
-        return AddonPack.PROOT.file(context, "libproot-loader.so");
-    }
-
-    public static String prootSource(Context context) {
-        File bin = prootBinary(context);
-        if (!bin.isFile()) return PROOT_MISSING;
-        if (AddonPack.PROOT.installed(context)
-                && bin.getPath().equals(AddonPack.PROOT.file(context, "libproot.so").getPath())) return PROOT_PACK;
-        return PROOT_ROOTFS;
-    }
-
-    public static String prootLibraryPath(Context context) {
-        File dir = new File(rootDir(context), HOST_DIR);
-        return dir.equals(prootBinary(context).getParentFile()) ? dir.getPath() : "";
-    }
-
     public static boolean isInstalled(Context context) {
-        return hasRootfs(context) && (patchedProot(context) || rootfsProotReady(context));
+        return hasRootfs(context);
     }
 
     public static boolean hasRootfs(Context context) {
@@ -131,6 +83,11 @@ public final class LinuxRuntime {
         return manifests.length > 0 ? manifests[0] : null;
     }
 
+    /**
+     * Compatibility wrapper for callers that still start a guest command as a host process.
+     * The returned argv runs the command inside the container as root through `su`; bind
+     * arguments are ignored because the container's mount set is fixed when it starts.
+     */
     public static List<String> command(Context context, File sessionRoot, File runtimeDir,
                                        File externalStorage, List<String> guestCommand) {
         return command(context, sessionRoot, runtimeDir, externalStorage, null, guestCommand);
@@ -139,92 +96,92 @@ public final class LinuxRuntime {
     public static List<String> command(Context context, File sessionRoot, File runtimeDir,
                                        File externalStorage, List<String> extraBinds,
                                        List<String> guestCommand) {
-        File root = rootDir(context);
-        List<String> binds = binds(context, sessionRoot, runtimeDir, externalStorage, extraBinds);
-        if (sessionRoot != null) lastBinds = binds;
-        return commandWithBinds(context, root, binds, guestCommand);
+        return containerCommand(guestCommand);
     }
 
     public static List<String> commandWithBinds(Context context, File root, List<String> binds,
                                                 List<String> guestCommand) {
-        List<String> cmd = prootPrefix(context, root, "/root");
-        for (String spec : binds) bind(cmd, spec);
-        cmd.addAll(guestCommand);
+        return containerCommand(guestCommand);
+    }
+
+    /** argv for `su -c "<droidspaces run ...>"`, suitable for ProcessBuilder/HostProcess.start. */
+    public static List<String> containerCommand(List<String> guestCommand) {
+        List<String> cmd = new ArrayList<>();
+        cmd.add(suBinary());
+        cmd.add("-c");
+        cmd.add(containerCommandLine(guestCommand));
         return cmd;
+    }
+
+    /** Shell command line that runs [guestCommand] inside the container as root. */
+    public static String containerCommandLine(List<String> guestCommand) {
+        List<String> argv = new ArrayList<>();
+        argv.add(ContainerPaths.CLI);
+        argv.add("-n");
+        argv.add(ContainerPaths.CONTAINER_NAME);
+        argv.add("run");
+        argv.add("--");
+        argv.addAll(guestCommand);
+        return shellJoin(argv);
+    }
+
+    public static String suBinary() {
+        for (String path : new String[]{"/system/bin/su", "/system/xbin/su", "/debug_ramdisk/su"}) {
+            if (new File(path).canExecute()) return path;
+        }
+        return "su";
+    }
+
+    public static String shellQuote(String value) {
+        if (value.isEmpty()) return "''";
+        return "'" + value.replace("'", "'\\''") + "'";
+    }
+
+    private static String shellJoin(List<String> argv) {
+        StringBuilder out = new StringBuilder();
+        for (String arg : argv) {
+            if (out.length() > 0) out.append(' ');
+            out.append(shellQuote(arg));
+        }
+        return out.toString();
     }
 
     private static volatile List<String> lastBinds;
 
+    /** Container-view bind specs of the running session; guest path -> host path mapping. */
+    public static void setLastBinds(List<String> binds) {
+        lastBinds = binds == null ? null : new ArrayList<>(binds);
+    }
+
     public static List<String> lastBinds(Context context) {
         List<String> binds = lastBinds;
-        if (binds != null) return binds;
-        return binds(context, null, null, android.os.Environment.getExternalStorageDirectory(), null);
+        return binds != null ? binds : new ArrayList<>();
     }
 
-    public static List<String> prootPrefix(Context context, File root, String cwd) {
-        return prootPrefix(context, root, cwd, false);
-    }
-
-    public static List<String> prootPrefix(Context context, File root, String cwd, boolean fakeRoot) {
-        List<String> cmd = new ArrayList<>();
-        cmd.add(prootBinary(context).getPath());
-        cmd.add("--kill-on-exit");
-        cmd.add("--kernel-release=" + guestUtsname(SessionPrefs.guestHostname(context)));
-        int uid = Process.myUid();
-        if (fakeRoot) {
-            cmd.add("-0");
-        } else {
-            cmd.add("-i");
-            cmd.add(uid + ":" + uid);
-        }
-        cmd.add("-r");
-        cmd.add(root.getPath());
-        cmd.add("-w");
-        cmd.add(cwd);
-        return cmd;
-    }
-
+    /**
+     * Bind specs for the host-side emulation files the container does not provide itself
+     * (fake proc/sysfs entries, thermal and GPU stats, backlight). Base mounts (/dd, /gd,
+     * /run/droiddeck*, /dev, /proc, /sys, fonts, external storage, /dev/shm and the fake
+     * DRM tree) are owned by the container runtime and must not be repeated here.
+     */
     public static List<String> binds(Context context, File sessionRoot, File runtimeDir,
                                      File externalStorage, List<String> extraBinds) {
         File root = rootDir(context);
         LegacyNames.migrateEtc(root);
-        List<String> cmd = new ArrayList<>();
-        bind(cmd, "/dev");
-        bind(cmd, "/proc");
-        bind(cmd, "/sys");
+        List<String> specs = new ArrayList<>();
         if (com.droiddeck.launcher.gpu.SystemVulkanDriver.isPowerVr()) {
             // The glibc bridge loads the device's existing Android HAL and its dependencies.
             // These read-only Android partitions remain subject to the app's normal permissions.
             for (String path : new String[]{"/system", "/vendor", "/apex", "/system_ext", "/product", "/odm"})
-                if (new File(path).isDirectory()) bind(cmd, path);
-            if (new File("/linkerconfig/ld.config.txt").isFile()) bind(cmd, "/linkerconfig/ld.config.txt");
+                if (new File(path).isDirectory()) specs.add(path + ":" + path);
+            if (new File("/linkerconfig/ld.config.txt").isFile()) specs.add("/linkerconfig/ld.config.txt:/linkerconfig/ld.config.txt");
         }
-        bind(cmd, DeviceControlsComponent.prepareBacklight(context, root).getPath() + ":/sys/class/backlight");
-        bind(cmd, "/dev/urandom:/dev/random");
-        bind(cmd, "/proc/self/fd:/dev/fd");
-        bind(cmd, "/proc/self/fd/0:/dev/stdin");
-        bind(cmd, "/proc/self/fd/1:/dev/stdout");
-        bind(cmd, "/proc/self/fd/2:/dev/stderr");
-        bind(cmd, new File(root, "etc/droiddeck/empty").getPath() + ":/sys/fs/selinux");
+        specs.add(DeviceControlsComponent.prepareBacklight(context, root).getPath() + ":/sys/class/backlight");
+        specs.add("/dev/urandom:/dev/random");
         // A kernel that refuses to list /sys/class/thermal (Pixel 10, Android 17) made mangoapp abort
         // at start ("filesystem_error ... Permission denied: '/sys/class/thermal/'") until its
         // wrapper gave up: it lists the directory for CPU temperatures. Empty there instead.
-        if (new File("/sys/class/thermal").list() == null) bind(cmd, new File(root, "etc/droiddeck/empty").getPath() + ":/sys/class/thermal");
-        bind(cmd, context.getFilesDir().getPath());
-        bind(cmd, context.getCacheDir().getPath());
-        bind(cmd, liveDir(context).getPath());
-        if (runtimeDir != null) {
-            bind(cmd, runtimeDir.getPath());
-            bind(cmd, runtimeDir.getPath() + ":" + GUEST_RUNTIME_DIR);
-        }
-        if (sessionRoot != null) bind(cmd, sessionRoot.getPath());
-        if (externalStorage != null && externalStorage.isDirectory()) {
-            bind(cmd, externalStorage.getPath());
-        }
-        File shm = new File(liveDir(context), "shm");
-        shm.mkdirs();
-        bind(cmd, shm.getPath() + ":/dev/shm");
-        bindSystemFonts(cmd, root);
+        if (new File("/sys/class/thermal").list() == null) specs.add(new File(root, "etc/droiddeck/empty").getPath() + ":/sys/class/thermal");
 
         File fakeProc = new File(root, "etc/droiddeck/proc");
         File pciDevices = new File(fakeProc, "pci_devices");
@@ -265,43 +222,41 @@ public final class LinuxRuntime {
             boolean live = false;
             if (extraBinds != null) for (String spec : extraBinds) live |= spec.endsWith(":" + entry[1]);
             if (!live && fake.isFile() && !new File(entry[1]).canRead()) {
-                bind(cmd, fake.getPath() + ":" + entry[1]);
+                specs.add(fake.getPath() + ":" + entry[1]);
             }
         }
         if (unreadablePciDevice()) {
-            bind(cmd, new File(root, "etc/droiddeck/empty").getPath() + ":/sys/bus/pci/devices");
+            specs.add(new File(root, "etc/droiddeck/empty").getPath() + ":/sys/bus/pci/devices");
         }
         if (com.droiddeck.launcher.gpu.SystemVulkanDriver.isPowerVr()) {
-            bindPowerVrGpuNode(context, cmd);
-        } else {
-            bindGpuNode(context, cmd);
+            specs.addAll(powerVrGpuNode(context));
         }
-        bindAdrenoStats(cmd, extraBinds);
-        bindCpuTemps(cmd, root);
+        specs.addAll(adrenoStats(extraBinds));
+        specs.addAll(cpuTemps(root));
         if (extraBinds != null) {
-            for (String spec : extraBinds) bind(cmd, spec);
+            for (String spec : extraBinds) specs.add(spec);
         }
-        List<String> specs = new ArrayList<>();
-        for (int i = 0; i + 1 < cmd.size(); i += 2) specs.add(cmd.get(i + 1));
         return specs;
     }
 
-    private static void bindPowerVrGpuNode(Context context, List<String> cmd) {
-        if (new File("/dev/dri").list() != null) return;
+    private static List<String> powerVrGpuNode(Context context) {
+        List<String> specs = new ArrayList<>();
+        if (new File("/dev/dri").list() != null) return specs;
         String node = SystemVulkanDriver.renderNodePath();
-        if (node == null) return;
+        if (node == null) return specs;
         String name = new File(node).getName();
         File dri = new File(context.getCacheDir(), "powervr-drm/" + name + "/dri");
         try {
-            if (!dri.isDirectory() && !dri.mkdirs()) return;
+            if (!dri.isDirectory() && !dri.mkdirs()) return specs;
             new File(dri, name).createNewFile();
         } catch (IOException e) {
             android.util.Log.w("LinuxRuntime", "Cannot expose the PowerVR render node", e);
-            return;
+            return specs;
         }
-        bind(cmd, dri.getPath() + ":/dev/dri");
-        bind(cmd, node + ":" + node);
+        specs.add(dri.getPath() + ":/dev/dri");
+        specs.add(node + ":" + node);
         android.util.Log.i("LinuxRuntime", "PowerVR: exposing real " + name + " through a listable directory");
+        return specs;
     }
 
     private static boolean unreadablePciDevice() {
@@ -343,70 +298,6 @@ public final class LinuxRuntime {
         }
     }
 
-    private static void bindGpuNode(Context context, List<String> cmd) {
-        String standIn = gpuStandIn(context);
-        if (standIn == null) return;
-        boolean kgsl = standIn.equals(KGSL_DEVICE);
-        StructStat st;
-        try {
-            st = Os.stat(standIn);
-        } catch (ErrnoException e) {
-            return;
-        }
-        long dev = st.st_rdev;
-        long major = ((dev >> 8) & 0xfff) | ((dev >> 32) & ~0xfffL);
-        long minor = (dev & 0xff) | ((dev >> 12) & ~0xffL);
-        String node = "renderD" + minor;
-        File base = new File(liveDir(context), "drm");
-        File dri = new File(base, "dri");
-        File device = new File(base, "sys/" + major + ":" + minor + "/device");
-        File drm = new File(device, "drm/" + node);
-        try {
-            if ((!dri.isDirectory() && !dri.mkdirs()) || (!drm.isDirectory() && !drm.mkdirs())) {
-                return;
-            }
-            new File(dri, node).createNewFile();
-            Files.write(new File(drm, "dev").toPath(),
-                    (major + ":" + minor + "\n").getBytes(StandardCharsets.UTF_8));
-            Files.write(new File(device, "uevent").toPath(),
-                    (kgsl ? "DRIVER=kgsl-3d0\nMODALIAS=platform:kgsl-3d0\n" : "DRIVER=mali\nMODALIAS=platform:mali\n")
-                            .getBytes(StandardCharsets.UTF_8));
-            File subsystem = new File(device, "subsystem");
-            if (!Files.isSymbolicLink(subsystem.toPath())) {
-                Os.symlink("/sys/bus/platform", subsystem.getPath());
-            }
-            File driver = new File(device, "driver");
-            if (kgsl && !Files.isSymbolicLink(driver.toPath())) {
-                Os.symlink("/sys/bus/platform/drivers/msm_drm", driver.getPath());
-            }
-        } catch (IOException | ErrnoException e) {
-            return;
-        }
-        bind(cmd, new File(base, "sys").getPath() + ":/sys/dev/char");
-        bind(cmd, dri.getPath() + ":/dev/dri");
-        bind(cmd, standIn + ":/dev/dri/" + node);
-        bindDrmClass(base, cmd, node, major + ":" + minor);
-    }
-
-    private static void bindDrmClass(File base, List<String> cmd, String node, String devNumbers) {
-        if (new File("/sys/class/drm").list() != null) return;
-        File drmClass = new File(base, "class");
-        try {
-            if (!drmClass.isDirectory() && !drmClass.mkdirs()) return;
-            File[] old = drmClass.listFiles();
-            if (old != null) for (File f : old) Files.deleteIfExists(f.toPath());
-            Os.symlink("/sys/dev/char/" + devNumbers, new File(drmClass, node).getPath());
-        } catch (IOException | ErrnoException e) {
-            return;
-        }
-        bind(cmd, drmClass.getPath() + ":/sys/class/drm");
-        android.util.Log.i("LinuxRuntime", "hud: /sys/class/drm is not listable here; the session's lists " + node);
-        if (new File("/sys/class/powercap").list() == null) {
-            File empty = new File(base, "empty-powercap");
-            if (empty.isDirectory() || empty.mkdirs()) bind(cmd, empty.getPath() + ":/sys/class/powercap");
-        }
-    }
-
     public static String cpuTempSource() {
         for (File zone : cpuTempZones()) {
             File temp = new File(zone, "temp");
@@ -425,7 +316,8 @@ public final class LinuxRuntime {
         return firstReadable(kgsl + "gpu_busy_percentage", kgsl + "devfreq/gpu_load");
     }
 
-    private static void bindAdrenoStats(List<String> cmd, List<String> extraBinds) {
+    private static List<String> adrenoStats(List<String> extraBinds) {
+        List<String> specs = new ArrayList<>();
         String kgsl = "/sys/class/kgsl/kgsl-3d0/";
         String gpuTemp = gpuTempSource();
         String[][] stats = {
@@ -439,12 +331,13 @@ public final class LinuxRuntime {
         for (String[] stat : stats) {
             boolean fed = false;
             if (extraBinds != null) for (String spec : extraBinds) fed |= spec.endsWith(":" + stat[1]);
-            if (stat[0] != null && !fed) bind(cmd, stat[0] + ":" + stat[1]);
+            if (stat[0] != null && !fed) specs.add(stat[0] + ":" + stat[1]);
         }
         android.util.Log.i("LinuxRuntime", "hud sources: gpu load " + orNone(stats[0][0]) + ", gpu clock "
                 + orNone(stats[1][0]) + ", gpu temp " + orNone(gpuTemp) + ", ddr temp " + orNone(stats[4][0])
                 + ", thermal zones " + thermalZones().size()
                 + ", kgsl gpubusy " + (new File(kgsl + "gpubusy").canRead() ? "readable" : "refused"));
+        return specs;
     }
 
     private static String orNone(String path) {
@@ -477,12 +370,13 @@ public final class LinuxRuntime {
         return zones;
     }
 
-    private static void bindCpuTemps(List<String> cmd, File root) {
+    private static List<String> cpuTemps(File root) {
+        List<String> specs = new ArrayList<>();
         File name = new File(root, "etc/droiddeck/cpu-thermal-type");
         try {
             if (!name.isFile()) Files.write(name.toPath(), "cpu0-thermal\n".getBytes(StandardCharsets.US_ASCII));
         } catch (IOException e) {
-            return;
+            return specs;
         }
         java.util.Map<String, String> replaced = replacedZoneTypes();
         for (java.util.Map.Entry<String, File> zone : thermalZones().entrySet()) {
@@ -492,13 +386,14 @@ public final class LinuxRuntime {
                 File typeFile = new File(root, "etc/droiddeck/" + other + "-type");
                 try {
                     if (!typeFile.isFile()) Files.write(typeFile.toPath(), (other + "\n").getBytes(StandardCharsets.US_ASCII));
-                    bind(cmd, typeFile.getPath() + ":" + new File(zone.getValue(), "type").getPath());
+                    specs.add(typeFile.getPath() + ":" + new File(zone.getValue(), "type").getPath());
                 } catch (IOException ignored) {
                 }
             } else if (type.contains("cpu") && !type.contains("gpu") && !type.matches("cpu\\d-(top-)?thermal")) {
-                bind(cmd, name.getPath() + ":" + new File(zone.getValue(), "type").getPath());
+                specs.add(name.getPath() + ":" + new File(zone.getValue(), "type").getPath());
             }
         }
+        return specs;
     }
 
     private static String firstReadable(String... paths) {
@@ -528,26 +423,6 @@ public final class LinuxRuntime {
             }
         }
         return byType;
-    }
-
-    private static void bindSystemFonts(List<String> cmd, File root) {
-        File fonts = new File(SYSTEM_FONTS);
-        File target = new File(root, GUEST_SYSTEM_FONTS.substring(1));
-        if (!fonts.isDirectory() || !fonts.canRead() || !new File(root, "usr/local").isDirectory()) return;
-        if (target.isDirectory() || target.mkdirs()) {
-            bind(cmd, SYSTEM_FONTS + ":" + GUEST_SYSTEM_FONTS);
-        }
-    }
-
-    private static void bind(List<String> cmd, String spec) {
-        cmd.add("-b");
-        cmd.add(spec);
-    }
-
-    static String guestUtsname(String hostname) {
-        StructUtsname host = Os.uname();
-        return "\\" + host.sysname + "\\" + hostname + "\\" + host.release
-                + "\\" + host.version + "\\" + host.machine + "\\localdomain\\-1\\";
     }
 
     public static synchronized void writeAccounts(Context context) throws IOException {

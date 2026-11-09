@@ -68,7 +68,6 @@ class App : Application() {
         Thread({
             runCatching {
                 if (com.droiddeck.launcher.runtime.LinuxRuntime.rootDir(app).isDirectory) {
-                    com.droiddeck.launcher.core.AddonPack.PROOT.ensure(app)
                     com.droiddeck.launcher.core.AddonPack.DIRECTAUDIO.ensure(app)
                 }
                 if (com.droiddeck.launcher.stores.gog.GogComet.enabled(app)) com.droiddeck.launcher.core.AddonPack.COMET.ensure(app)

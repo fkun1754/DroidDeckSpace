@@ -6,9 +6,9 @@ import android.net.LocalSocket
 import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.util.Log
-import com.droiddeck.launcher.core.HostProcess
-import com.droiddeck.launcher.session.OrphanReaper
-import com.droiddeck.launcher.session.SessionPrefs
+import com.droiddeck.launcher.runtime.container.ContainerControl
+import com.droiddeck.launcher.runtime.container.ContainerPaths
+import com.droiddeck.launcher.runtime.container.DroidspacesCli
 import org.json.JSONObject
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -17,12 +17,16 @@ import java.io.FileDescriptor
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
-import java.io.InputStream
 import java.io.OutputStream
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 object RootSpawner {
     private const val TAG = "RootSpawner"
+    private const val PID_MARKER = "DROIDDECK_ROOT_PID"
+    private const val MAX_STDIN = 8 * 1024 * 1024
+    private const val ROOT_COMMAND_TIMEOUT_MS = 24 * 60 * 60 * 1000
+
     fun socket(context: Context): String = "${context.packageName}.root"
     private val seq = AtomicInteger()
     @Volatile private var server: LocalServerSocket? = null
@@ -63,7 +67,7 @@ object RootSpawner {
                 val body = ByteArray(input.readInt()).also { input.readFully(it) }
                 client.ancillaryFileDescriptors?.let { received.addAll(it) }
                 if (kind != 'R'.code) return
-                run(context, JSONObject(String(body, Charsets.UTF_8)), received, client, input, out, id)
+                run(context, JSONObject(String(body, Charsets.UTF_8)), received, input, out, id)
             } catch (e: Exception) {
                 Log.e(TAG, "root $id", e)
                 runCatching {
@@ -76,120 +80,84 @@ object RootSpawner {
         }
     }
 
-    private class Stdio(val redirect: ProcessBuilder.Redirect?, val fd: FileDescriptor?, val dup: ParcelFileDescriptor?)
-
-    private fun stdio(fd: FileDescriptor?, write: Boolean): Stdio {
-        if (fd == null) return Stdio(null, null, null)
-        val dup = try { ParcelFileDescriptor.dup(fd) } catch (e: IOException) { return Stdio(null, fd, null) }
-        val path = File("/proc/self/fd/${dup.fd}")
-        val opens = try {
-            if (write) FileOutputStream(path, true).close() else FileInputStream(path).close()
-            true
-        } catch (e: IOException) { false }
-        if (!opens) return Stdio(null, fd, dup)
-        val redirect = if (write) ProcessBuilder.Redirect.appendTo(path) else ProcessBuilder.Redirect.from(path)
-        return Stdio(redirect, fd, dup)
-    }
-
-    private fun pump(from: InputStream, to: OutputStream, name: String) =
-        Thread({
-            val buffer = ByteArray(16384)
-            try {
-                while (true) {
-                    val n = from.read(buffer)
-                    if (n < 0) break
-                    to.write(buffer, 0, n)
-                    to.flush()
-                }
-            } catch (e: IOException) {
-            } finally {
-                runCatching { to.close() }
-            }
-        }, name).apply { isDaemon = true; start() }
-
-    private fun run(context: Context, request: JSONObject, fds: List<FileDescriptor>, client: LocalSocket,
-                    input: DataInputStream, out: DataOutputStream, id: Int) {
-        val root = LinuxRuntime.rootDir(context)
+    private fun run(context: Context, request: JSONObject, fds: List<FileDescriptor>, input: DataInputStream,
+                    out: DataOutputStream, id: Int) {
         val argv = request.getJSONArray("argv").let { a -> (0 until a.length()).map { a.getString(it) } }
         if (argv.isEmpty()) throw IOException("no command")
         val cwd = request.optString("cwd", "/root").ifEmpty { "/root" }
-        val cmd = LinuxRuntime.prootPrefix(context, root, cwd, true)
-        cmd.add(1, "--link2symlink")
-        LinuxRuntime.lastBinds(context).filterNot { it.startsWith("/proc/self/fd/") }.forEach { cmd.add("-b"); cmd.add(it) }
-        cmd.add("/usr/bin/env")
-        cmd.add("-i")
-        request.optJSONObject("env")?.let { e -> e.keys().forEach { k -> cmd.add("$k=${e.getString(k)}") } }
-        cmd.addAll(argv)
-        val builder = ProcessBuilder(cmd).directory(root)
-        builder.environment().apply {
-            clear()
-            put("PROOT_LOADER", LinuxRuntime.prootLoader(context).path)
-            put("PROOT_TMP_DIR", LinuxRuntime.prootTempDir(context).path)
-            if (SessionPrefs.prootNoSeccomp(context)) put("PROOT_NO_SECCOMP", "1")
-            LinuxRuntime.prootLibraryPath(context).takeIf { it.isNotEmpty() }?.let { put("LD_LIBRARY_PATH", it) }
+        val env = LinkedHashMap<String, String>()
+        request.optJSONObject("env")?.let { e -> e.keys().forEach { k -> env[k] = e.getString(k) } }
+        val stdin = readStdin(fds.getOrNull(0))
+        // `droidspaces run` always runs as root, like the old proot -0; the marker line lets the
+        // caller signal the guest process tree through the container control script.
+        val script = buildString {
+            append("echo ").append(PID_MARKER).append(":$$; ")
+            append("cd ").append(LinuxRuntime.shellQuote(cwd)).append(" && exec /usr/bin/env -i")
+            env.forEach { (key, value) -> append(' ').append(LinuxRuntime.shellQuote("$key=$value")) }
+            argv.forEach { append(' ').append(LinuxRuntime.shellQuote(it)) }
         }
-        val streams = listOf(stdio(fds.getOrNull(0), false), stdio(fds.getOrNull(1), true), stdio(fds.getOrNull(2), true))
-        try {
-            builder.redirectInput(streams[0].redirect ?: ProcessBuilder.Redirect.PIPE)
-            builder.redirectOutput(streams[1].redirect ?: ProcessBuilder.Redirect.PIPE)
-            builder.redirectError(streams[2].redirect ?: ProcessBuilder.Redirect.PIPE)
-            val process = builder.start()
-            val pid = HostProcess.pidOf(process)
-            OrphanReaper.keep(pid)
-            Log.i(TAG, "root $id pid $pid: ${argv.joinToString(" ")}")
-            synchronized(out) { frame(out, 'P', pid.toString().toByteArray()) }
-            val pumps = ArrayList<Thread>()
-            if (streams[0].redirect == null) {
-                val fd = streams[0].fd
-                if (fd != null) pumps.add(pump(FileInputStream(fd), process.outputStream, "root-$id-in").also { it.isDaemon = true })
-                else runCatching { process.outputStream.close() }
-            }
-            if (streams[1].redirect == null) pumps.add(pump(process.inputStream,
-                streams[1].fd?.let { FileOutputStream(it) } ?: OutputStream.nullOutputStream(), "root-$id-out"))
-            if (streams[2].redirect == null) pumps.add(pump(process.errorStream,
-                streams[2].fd?.let { FileOutputStream(it) } ?: OutputStream.nullOutputStream(), "root-$id-err"))
-            Thread({
-                try {
-                    while (true) {
-                        val kind = input.readUnsignedByte()
-                        val body = ByteArray(input.readInt()).also { input.readFully(it) }
-                        if (kind == 'S'.code) String(body).trim().toIntOrNull()?.let { signal(pid, it) }
+        val cancelled = AtomicBoolean(false)
+        val guestPid = AtomicInteger(-1)
+        val output = fds.getOrNull(1)?.let { runCatching { FileOutputStream(it) }.getOrNull() }
+            ?: fds.getOrNull(2)?.let { runCatching { FileOutputStream(it) }.getOrNull() }
+            ?: OutputStream.nullOutputStream()
+        val watcher = Thread({
+            try {
+                while (true) {
+                    val kind = input.readUnsignedByte()
+                    val body = ByteArray(input.readInt()).also { input.readFully(it) }
+                    if (kind == 'S'.code) {
+                        val signal = String(body).trim().toIntOrNull() ?: continue
+                        val pid = guestPid.get()
+                        if (pid > 1) runCatching { ContainerControl.signal(context, signal, pid) }
                     }
-                } catch (e: IOException) {
                 }
-                if (process.isAlive) {
-                    Log.i(TAG, "root $id: its caller is gone; stopping it")
-                    signal(pid, android.system.OsConstants.SIGHUP)
-                    android.os.Process.sendSignal(pid, android.system.OsConstants.SIGQUIT)
-                }
-            }, "root-$id-watch").apply { isDaemon = true; start() }
-            val status = process.waitFor()
-            pumps.filter { it.name.endsWith("-out") || it.name.endsWith("-err") }.forEach { it.join(2000) }
-            OrphanReaper.release(pid)
-            Log.i(TAG, "root $id exited $status")
-            runCatching { synchronized(out) { frame(out, 'X', status.toString().toByteArray()) } }
+            } catch (e: IOException) {
+            }
+            if (!cancelled.get()) {
+                Log.i(TAG, "root $id: its caller is gone; stopping it")
+                cancelled.set(true)
+            }
+        }, "root-$id-watch").apply { isDaemon = true; start() }
+        try {
+            GuestCommand.ensureContainer(context)
+            val result = DroidspacesCli.exec(context, ContainerPaths.CONTAINER_NAME, null,
+                listOf("/bin/sh", "-c", script), stdin, ROOT_COMMAND_TIMEOUT_MS,
+                { line ->
+                    if (guestPid.get() <= 0 && line.startsWith("$PID_MARKER:")) {
+                        line.removePrefix("$PID_MARKER:").trim().toIntOrNull()?.takeIf { it > 1 }?.let { pid ->
+                            guestPid.set(pid)
+                            Log.i(TAG, "root $id guest pid $pid: ${argv.joinToString(" ")}")
+                            runCatching { synchronized(out) { frame(out, 'P', pid.toString().toByteArray()) } }
+                        }
+                    } else {
+                        runCatching { output.write((line + "\n").toByteArray()); output.flush() }
+                    }
+                }, cancelled)
+            Log.i(TAG, "root $id exited ${result.exitCode}")
+            runCatching { synchronized(out) { frame(out, 'X', result.exitCode.toString().toByteArray()) } }
         } finally {
-            streams.forEach { s -> runCatching { s.dup?.close() } }
+            watcher.interrupt()
+            runCatching { output.close() }
         }
     }
 
-    private fun signal(top: Int, signal: Int) {
-        val parents = HashMap<Int, Int>()
-        File("/proc").listFiles()?.forEach { dir ->
-            val pid = dir.name.toIntOrNull() ?: return@forEach
-            val stat = try { File(dir, "stat").readText() } catch (e: IOException) { return@forEach }
-            val fields = stat.substringAfterLast(')').trim().split(' ')
-            fields.getOrNull(1)?.toIntOrNull()?.let { parents[pid] = it }
-        }
-        val tree = HashSet<Int>()
-        var grew = true
-        while (grew) {
-            grew = false
-            for ((pid, parent) in parents) {
-                if (pid !in tree && (parent == top || parent in tree)) { tree.add(pid); grew = true }
+    private fun readStdin(fd: FileDescriptor?): String {
+        if (fd == null) return ""
+        return try {
+            FileInputStream(fd).use { input ->
+                val buffer = ByteArray(16384)
+                val data = java.io.ByteArrayOutputStream()
+                while (data.size() < MAX_STDIN) {
+                    val count = input.read(buffer, 0, minOf(buffer.size, MAX_STDIN - data.size()))
+                    if (count < 0) break
+                    data.write(buffer, 0, count)
+                }
+                String(data.toByteArray(), Charsets.UTF_8)
             }
+        } catch (e: IOException) {
+            ""
         }
-        tree.forEach { runCatching { android.os.Process.sendSignal(it, signal) } }
     }
 
     private fun frame(out: DataOutputStream, kind: Char, payload: ByteArray) {

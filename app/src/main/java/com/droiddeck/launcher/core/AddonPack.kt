@@ -135,9 +135,6 @@ internal class AddonPack(
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         @JvmField
-        val PROOT = AddonPack("proot", BuildConfig.PACK_PROOT_SHA256, BuildConfig.PACK_PROOT_SIZE,
-            listOf("libproot.so", "libproot-loader.so"))
-        @JvmField
         val DIRECTAUDIO = AddonPack("directaudio", BuildConfig.PACK_DIRECTAUDIO_SHA256, BuildConfig.PACK_DIRECTAUDIO_SIZE,
             listOf("linux-wine11/version.txt", "linux-wine11-systhread/version.txt"))
         val TRACKING = AddonPack("tracking", BuildConfig.PACK_TRACKING_SHA256, BuildConfig.PACK_TRACKING_SIZE, listOf(

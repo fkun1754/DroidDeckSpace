@@ -3,7 +3,6 @@ package com.droiddeck.launcher.agent
 import android.content.Context
 import android.util.Log
 import com.droiddeck.launcher.runtime.LinuxRuntime
-import com.droiddeck.launcher.runtime.ProotFastPath
 import com.droiddeck.launcher.session.SessionPhase
 import com.droiddeck.launcher.session.SessionState
 import org.json.JSONArray
@@ -101,13 +100,8 @@ object AgentEnv {
         state
     }
 
-    fun fastPathLibrary(context: Context): String = synchronized(lock) {
-        if (!AgentAccess.commandsAllowed(context)) return@synchronized ProotFastPath.LIBRARY
-        if ("libblfastpath.so" !in strings(load(context).optJSONArray("activeOverrides"))) return@synchronized ProotFastPath.LIBRARY
-        val file = File(bin(context), "libblfastpath.so")
-        if (!file.isFile || Files.isSymbolicLink(file.toPath())) return@synchronized ProotFastPath.LIBRARY
-        "$GUEST_BIN/libblfastpath.so"
-    }
+    /** proot's fast-path preload does not exist in the container runtime; kept for the staged ld.so.preload writer. */
+    fun fastPathLibrary(context: Context): String = ""
 
     private fun arm64SharedLibrary(file: File): Boolean = file.inputStream().use { input ->
         val header = ByteArray(20)

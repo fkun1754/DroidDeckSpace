@@ -9,7 +9,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
 import com.droiddeck.launcher.R
 import com.droiddeck.launcher.runtime.LinuxRuntime
-import com.droiddeck.launcher.runtime.ProotFastPath
 import com.droiddeck.launcher.session.SessionState
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -225,11 +224,11 @@ class AgentSecurityTest {
         }
         val response = AgentEnv.override(context, source.name)
         assertEquals(64, response.getString("sha256").length)
-        assertEquals(ProotFastPath.LIBRARY, AgentEnv.fastPathLibrary(context))
+        assertEquals("", AgentEnv.fastPathLibrary(context))
         AgentEnv.beginSession(context)
-        assertEquals("/opt/droiddeck-agent/bin/libblfastpath.so", AgentEnv.fastPathLibrary(context))
+        assertEquals("", AgentEnv.fastPathLibrary(context))
         AgentEnv.endSession(context)
-        assertEquals(ProotFastPath.LIBRARY, AgentEnv.fastPathLibrary(context))
+        assertEquals("", AgentEnv.fastPathLibrary(context))
     }
 
     @Test fun environmentValuesAreNotLogged() {

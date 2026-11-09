@@ -49,10 +49,6 @@ class RuntimeInputsTest(unittest.TestCase):
 
     def packs(self):
         self.pack('tracking', {library.rsplit('/', 1)[1]: b'library' for library in runtime.PACKED_LIBRARIES})
-        proot = {}
-        for name, (pack, rel) in runtime.PACKED_FILES.items():
-            proot[rel] = (self.root / runtime.outputs(self.root)[name]).read_bytes()
-        self.pack('proot', proot)
         self.pack('butler', {'butler': b'butler', '7z.so': b'7z', 'libc7zip.so': b'c7zip', 'version': b'15.32.0'})
         for prefix, name in runtime.PACKED.items():
             base = self.root / 'app/src/main' / prefix
@@ -60,7 +56,7 @@ class RuntimeInputsTest(unittest.TestCase):
 
     @staticmethod
     def in_apk(name):
-        return name not in runtime.PACKED_FILES and not any(name.startswith(prefix) for prefix in runtime.PACKED)
+        return not any(name.startswith(prefix) for prefix in runtime.PACKED)
 
     def audio(self, names):
         stream = io.BytesIO()
@@ -71,16 +67,6 @@ class RuntimeInputsTest(unittest.TestCase):
                 archive.addfile(entry, io.BytesIO(b'x'))
         path = self.root / 'app/build/prepared-assets/pulseaudio.tzst'
         path.write_bytes(subprocess.run(['zstd', '-q', '-c'], input=stream.getvalue(), capture_output=True, check=True).stdout)
-
-    def test_an_apk_still_carrying_proot_is_rejected(self):
-        apk = self.current_apk(self.root / 'bundled.apk', {'lib/arm64-v8a/libproot.so': b'prepared runtime'})
-        with self.assertRaisesRegex(ValueError, 'proot pack provides'):
-            runtime.check_apk(apk, self.root)
-
-    def test_missing_proot_cannot_be_attested(self):
-        (self.root / 'app/src/main/jniLibs/arm64-v8a/libproot.so').unlink()
-        with self.assertRaisesRegex(ValueError, 'libproot.so'):
-            runtime.record(self.root)
 
     def test_base_audio_without_compiled_sinks_is_rejected(self):
         self.audio(['pactl'])
@@ -102,7 +88,7 @@ class RuntimeInputsTest(unittest.TestCase):
 
     def test_dev_loop_still_rejects_changed_outputs(self):
         runtime.record(self.root)
-        (self.root / 'app/src/main/jniLibs/arm64-v8a/libproot.so').write_bytes(b'old APK binary')
+        (self.root / 'app/src/main/jniLibs/arm64-v8a/libdirectaudiorelay.so').write_bytes(b'old APK binary')
         with self.assertRaisesRegex(ValueError, 'changed runtime input'):
             runtime.verify(self.root, stale_sources_ok=True)
 
@@ -136,7 +122,7 @@ class RuntimeInputsTest(unittest.TestCase):
 
     def test_modified_prebuilt_binary_is_rejected(self):
         runtime.record(self.root)
-        (self.root / 'app/src/main/jniLibs/arm64-v8a/libproot.so').write_bytes(b'old APK binary')
+        (self.root / 'app/src/main/jniLibs/arm64-v8a/libdirectaudiorelay.so').write_bytes(b'old APK binary')
         with self.assertRaisesRegex(ValueError, 'changed runtime input'):
             runtime.verify(self.root)
 

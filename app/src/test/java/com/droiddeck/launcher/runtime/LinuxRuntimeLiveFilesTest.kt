@@ -37,10 +37,9 @@ class LinuxRuntimeLiveFilesTest {
     }
 
     @Test fun cacheEvictionPreservesGuestSharedMemoryAndRuntimeBindings() {
-        val binds = LinuxRuntime.binds(context, null, null, null, null)
-        val shm = File(binds.single { it.endsWith(":/dev/shm") }.removeSuffix(":/dev/shm"))
         val live = LinuxRuntime.liveDir(context)
-        val files = listOf(File(shm, "steamvr-ipc"), File(LinuxRuntime.prootTempDir(context), "loader"),
+        val shm = File(live, "shm")
+        val files = listOf(File(shm, "steamvr-ipc"), File(live, "loader"),
             File(live, "drm/device"), File(live, "bwrap/1/state"))
         files.forEach { it.parentFile!!.mkdirs(); it.writeText("active") }
         val disposable = File(context.cacheDir, "download").apply { writeText("cached") }
@@ -49,8 +48,7 @@ class LinuxRuntimeLiveFilesTest {
 
         assertFalse(disposable.exists())
         files.forEach { assertEquals("active", it.readText()) }
-        assertTrue(live.path in binds)
-        assertEquals(binds, LinuxRuntime.binds(context, null, null, null, null))
+        assertTrue(shm.isDirectory)
         assertTrue(live.toPath().startsWith(context.noBackupFilesDir.toPath()))
     }
 

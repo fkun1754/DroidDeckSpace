@@ -49,7 +49,6 @@ class RuntimeInstallRollbackTest {
             override fun getApplicationContext(): Context = this
         }
         for ((pack, pin, required) in listOf(
-            Triple(AddonPack.PROOT, BuildConfig.PACK_PROOT_SHA256, listOf("libproot.so", "libproot-loader.so")),
             Triple(AddonPack.DIRECTAUDIO, BuildConfig.PACK_DIRECTAUDIO_SHA256,
                 listOf("linux-wine11/version.txt", "linux-wine11-systhread/version.txt")),
         )) {

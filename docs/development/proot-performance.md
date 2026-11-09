@@ -1,3 +1,5 @@
+> 已过时：DroidDeck 已改用 DroidSpaces 容器运行时，见 [container-runtime.md](container-runtime.md)。本文保留为历史研究记录。
+
 # proot, glibc and where the time goes
 
 Research notes for `feat/performance-fixes-2` (2026-09-30). The question was whether Steam and the

@@ -144,7 +144,7 @@ fun BottomTelemetryPage(fps: () -> Float?, runningGame: () -> String? = { null }
     var perfTick by remember { mutableIntStateOf(0) }
     var traceTick by remember { mutableIntStateOf(0) }
     var clock by remember { mutableStateOf("") }
-    val frames = remember { GameFrameFeed(File(LinuxRuntime.rootDir(context), HudFrames.PATH)) }
+    val frames = remember { GameFrameFeed(HudFrames.hostFile(context)) }
     DisposableEffect(frames) { onDispose { frames.close() } }
     val currentFps = { if (frames.live) frames.stats.fps else fps() }
     var hud by remember { mutableStateOf(StatsHud.from(SessionPrefs.statsHud(context))) }
@@ -214,7 +214,7 @@ fun BottomTelemetryPage(fps: () -> Float?, runningGame: () -> String? = { null }
         }
     }
     LaunchedEffect(Unit) {
-        val metrics = HudMetrics(context).apply { setMangoReadings(MangoReadings(File(context.filesDir, "session"), LinuxRuntime.rootDir(context))) }
+        val metrics = HudMetrics(context).apply { setMangoReadings(MangoReadings(File(context.filesDir, "session"), LinuxRuntime.hudDir(context))) }
         val fanPath = withContext(Dispatchers.IO) { runCatching { HwmonComponent.fanSource() }.getOrNull() }
         gpuName = withContext(Dispatchers.IO) { runCatching { GpuInfo.detect().displayName(context) }.getOrDefault("") }
         coreGroups = withContext(Dispatchers.IO) { coreGroups() }

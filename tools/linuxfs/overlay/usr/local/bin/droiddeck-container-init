@@ -1,0 +1,146 @@
+#!/bin/sh
+# DroidDeck container PID 1: prepare the guest runtime, then exec the session as the
+# app uid. Contract: docs/development/container-runtime.md §3.1-§3.2.
+set -u
+umask 022
+
+ENV_FILE=/dd/container/session.env
+ARGS_FILE=/dd/container/session.args
+SESSION=/usr/local/bin/droiddeck-session
+READY=/run/droiddeck/ready
+
+log() { printf '[droiddeck-container-init] %s\n' "$*"; }
+warn() { printf '[droiddeck-container-init] %s\n' "$*" >&2; }
+die() { printf '[droiddeck-container-init] %s\n' "$*" >&2; exit 1; }
+
+is_uint() {
+  case ${1:-} in '' | *[!0-9]*) return 1 ;; esac
+  return 0
+}
+
+machine_id_ok() {
+  [ -r /etc/machine-id ] || return 1
+  _dd_mid=$(tr -d '\n' 2>/dev/null < /etc/machine-id) || return 1
+  [ ${#_dd_mid} -eq 32 ] || return 1
+  case $_dd_mid in *[!0-9a-f]* | 00000000000000000000000000000000) return 1 ;; esac
+  return 0
+}
+
+ensure_machine_id() {
+  mkdir -p /run/dbus 2>/dev/null || true
+  if ! machine_id_ok; then
+    _dd_mid=$(tr -d '-' 2>/dev/null < /proc/sys/kernel/random/uuid) || _dd_mid=
+    if [ ${#_dd_mid} -ne 32 ]; then
+      log "cannot generate a machine id; dbus clients may misbehave"
+      return 0
+    fi
+    if printf '%s\n' "$_dd_mid" > /etc/machine-id.droiddeck 2>/dev/null &&
+      mv -f /etc/machine-id.droiddeck /etc/machine-id 2>/dev/null; then
+      log "generated /etc/machine-id"
+    else
+      rm -f /etc/machine-id.droiddeck 2>/dev/null || true
+      log "cannot write /etc/machine-id; dbus clients may misbehave"
+      return 0
+    fi
+  fi
+  if [ ! -e /var/lib/dbus/machine-id ]; then
+    mkdir -p /var/lib/dbus 2>/dev/null || true
+    cp /etc/machine-id /var/lib/dbus/machine-id 2>/dev/null || true
+  fi
+}
+
+clear_stale_session_files() {
+  rm -f "$READY" 2>/dev/null || true
+  # /tmp lives in the rootfs, so the previous session's markers survive a container restart.
+  rm -f /tmp/.bl-zram /tmp/.bl-clock 2>/dev/null || true
+  rm -rf /tmp/droiddeck-* /tmp/.droiddeck-* 2>/dev/null || true
+  # A stale Xwayland lock after a killed session makes the next Xwayland refuse to start.
+  rm -rf /tmp/.X11-unix 2>/dev/null || true
+  rm -f /tmp/.X*-lock 2>/dev/null || true
+}
+
+# The container /sys is read-only and sysfs rejects bind targets that do not exist there,
+# so the app's fake drm/input sysfs entries need a writable overlay over the real one.
+prepare_fake_sysfs() {
+  [ -f /dd/container/sysfs-binds ] || return 0
+  mount -t tmpfs none /tmp/droiddeck-sys 2>/dev/null || warn "cannot mount the fake sysfs tmpfs"
+  mkdir -p /tmp/droiddeck-sys/upper /tmp/droiddeck-sys/work 2>/dev/null || true
+  mount -t overlay overlay -o lowerdir=/sys,upperdir=/tmp/droiddeck-sys/upper,workdir=/tmp/droiddeck-sys/work /sys 2>/dev/null ||
+    warn "cannot overlay /sys: fake sysfs entries will be missing"
+  while IFS='|' read -r _dd_src _dd_dst; do
+    [ -n "$_dd_src" ] && [ -n "$_dd_dst" ] || continue
+    mkdir -p "$_dd_dst" 2>/dev/null || { warn "cannot create $_dd_dst"; continue; }
+    mount --bind "$_dd_src" "$_dd_dst" 2>/dev/null || warn "cannot bind $_dd_src to $_dd_dst"
+  done < /dd/container/sysfs-binds
+}
+
+[ -r "$ENV_FILE" ] || die "missing $ENV_FILE: the app did not prepare the session"
+set -a
+. "$ENV_FILE" || die "cannot source $ENV_FILE"
+set +a
+
+missing=
+[ -n "${DD_UID:-}" ] || missing="$missing DD_UID"
+[ -n "${DD_GID:-}" ] || missing="$missing DD_GID"
+[ -n "${DD_MODE:-}" ] || missing="$missing DD_MODE"
+[ -z "$missing" ] || die "session.env is missing:$missing"
+is_uint "$DD_UID" || die "DD_UID is not a number: $DD_UID"
+is_uint "$DD_GID" || die "DD_GID is not a number: $DD_GID"
+[ "$DD_UID" -gt 0 ] || die "DD_UID must not be 0: the session must run as the app uid"
+groups=${DD_GROUPS:-$DD_GID}
+case $groups in
+  '' | ,* | *, | *,,*) die "DD_GROUPS is malformed: $groups" ;;
+esac
+case $groups in *[!0-9,]*) die "DD_GROUPS must be comma-separated gids: $groups" ;; esac
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}
+export PATH
+
+mkdir -p /run/droiddeck /run/droiddeck-hud /run/dbus /tmp 2>/dev/null ||
+  die "cannot create the guest runtime directories"
+chmod 1777 /tmp 2>/dev/null || true
+for dir in /run/droiddeck-hud /run/droiddeck-hud/frames; do
+  mkdir -p "$dir" 2>/dev/null || true
+  if [ -d "$dir" ]; then
+    chown "$DD_UID:$DD_GID" "$dir" 2>/dev/null || log "cannot chown $dir to $DD_UID:$DD_GID"
+    chmod 0770 "$dir" 2>/dev/null || true
+  fi
+done
+
+ensure_machine_id
+clear_stale_session_files
+prepare_fake_sysfs
+
+set --
+if [ -f "$ARGS_FILE" ]; then
+  while IFS= read -r _dd_arg; do
+    set -- "$@" "$_dd_arg"
+  done < "$ARGS_FILE"
+fi
+# The app may write the mode as the first argument or leave it to DD_MODE only.
+if [ $# -eq 0 ] || [ "$1" != "$DD_MODE" ]; then
+  set -- "$DD_MODE" "$@"
+fi
+
+printf 'ready\n' > "$READY" 2>/dev/null || die "cannot write $READY"
+chown "$DD_UID:$DD_GID" "$READY" 2>/dev/null || true
+
+# Maintenance container: no game session, the app only needs a live container for
+# `droidspaces run` commands (installers, flatpak, appimage). Stay root so those run as root.
+if [ "$DD_MODE" = service ]; then
+  log "maintenance container: staying alive as PID 1"
+  trap 'exit 0' TERM INT HUP
+  while :; do
+    sleep 3600 &
+    wait $! || true
+  done
+fi
+
+SETPRIV=$(command -v setpriv 2>/dev/null) || SETPRIV=
+[ -n "$SETPRIV" ] || die "setpriv not found: the runtime image needs util-linux"
+[ -x "${DD_SESSION_BIN:-$SESSION}" ] || die "${DD_SESSION_BIN:-$SESSION} is missing or not executable"
+
+log "ready: mode=$DD_MODE uid=$DD_UID gid=$DD_GID groups=$groups session=${DD_SESSION:-none} args=$*"
+# exec: the session process becomes PID 1, so its status is what the DroidSpaces monitor records.
+exec "$SETPRIV" --reuid="$DD_UID" --regid="$DD_GID" --groups="$groups" \
+  --inh-caps=-all --bounding-set=-all -- "${DD_SESSION_BIN:-$SESSION}" "$@"

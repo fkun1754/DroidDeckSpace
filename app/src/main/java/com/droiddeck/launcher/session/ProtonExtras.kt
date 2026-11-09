@@ -8,6 +8,7 @@ import android.util.Log
 import com.droiddeck.launcher.core.Downloader
 import com.droiddeck.launcher.core.FileUtils
 import com.droiddeck.launcher.runtime.LinuxRuntime
+import com.droiddeck.launcher.runtime.container.ContainerEnv
 import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
@@ -273,16 +274,15 @@ object ProtonExtras {
             val guest = listOf(
                 "/usr/bin/env", "-i", "HOME=/root", "USER=root", "PATH=/usr/local/bin:/usr/bin:/bin",
                 "LANG=C.UTF-8", "XDG_DATA_HOME=/root/.local/share",
-                "/usr/local/bin/droiddeck-proton-extra", "/root/.local/share/Steam", archive.absolutePath,
+                "/usr/local/bin/droiddeck-proton-extra", "/root/.local/share/Steam",
+                ContainerEnv.guestPath(context, archive.absolutePath),
             )
+            runCatching { com.droiddeck.launcher.runtime.GuestCommand.ensureContainer(context) }
+                .onFailure { Log.w(TAG, "container", it) }
             val command = LinuxRuntime.command(context, null, runtimeDir, null, guest)
             val process = ProcessBuilder(command)
                 .directory(root)
                 .redirectErrorStream(true)
-            val hostEnv = process.environment()
-            hostEnv["PROOT_LOADER"] = LinuxRuntime.prootLoader(context).path
-            hostEnv["PROOT_TMP_DIR"] = LinuxRuntime.prootTempDir(context).path
-            LinuxRuntime.prootLibraryPath(context).takeIf { it.isNotEmpty() }?.let { hostEnv["LD_LIBRARY_PATH"] = it }
             val child = process.start()
             var placed: String? = null
             child.inputStream.bufferedReader().useLines { lines ->

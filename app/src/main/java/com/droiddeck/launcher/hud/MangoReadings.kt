@@ -5,7 +5,7 @@ import com.droiddeck.launcher.runtime.LinuxRuntime
 import java.io.File
 import kotlin.math.roundToInt
 
-internal class MangoReadings(private val sessionDir: File, private val rootDir: File) {
+internal class MangoReadings(private val sessionDir: File, private val hudDir: File) {
     class Cpu(val percent: Int, val perCore: IntArray)
     class Memory(val usedBytes: Long, val totalBytes: Long, val swapUsedBytes: Long, val swapTotalBytes: Long)
     class Battery(val percent: Int?, val watts: Float, val charging: Boolean)
@@ -103,7 +103,7 @@ internal class MangoReadings(private val sessionDir: File, private val rootDir: 
     }
 
     /** The KGSL total DroidDeck shares with the session (GpuMemComponent). */
-    fun vramBytes(): Long? = fresh(File(rootDir, VRAM_FILE), VRAM_FRESH_MS)?.let(::readLong)?.takeIf { it > 0 }
+    fun vramBytes(): Long? = fresh(File(hudDir, VRAM_FILE), VRAM_FRESH_MS)?.let(::readLong)?.takeIf { it > 0 }
 
     fun battery(): Battery? {
         val dirs = File(sessionDir, "sys/power_supply").listFiles { f -> f.name.contains("BAT") }?.sortedBy { it.name }
@@ -140,7 +140,7 @@ internal class MangoReadings(private val sessionDir: File, private val rootDir: 
 
     companion object {
         private const val KGSL = "/sys/class/kgsl/kgsl-3d0"
-        const val VRAM_FILE = "run/droiddeck-hud/gpu-mem"
+        const val VRAM_FILE = "gpu-mem"
         private const val FEED_FRESH_MS = 10_000L
         private const val VRAM_FRESH_MS = 15_000L
         private const val CPU_TEMP_FRESH_MS = 10_000L

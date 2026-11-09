@@ -7,7 +7,7 @@ import com.droiddeck.launcher.runtime.LinuxRuntime
 import java.io.File
 import java.io.RandomAccessFile
 
-class GpuStatsComponent(val dir: File, private val root: File) : SessionPart() {
+class GpuStatsComponent(val dir: File, private val root: File, private val hudDir: File = File(root, "run/droiddeck-hud")) : SessionPart() {
     @Volatile private var running = false
     private var thread: Thread? = null
     private val feeds = ArrayList<Feed>()
@@ -147,7 +147,7 @@ class GpuStatsComponent(val dir: File, private val root: File) : SessionPart() {
     // for the whole session where they never move.
     private fun blockedLoadFeed(): Feed? {
         if (!loadBlocked()) return null
-        val load = LayerLoad(guestLoadDir(root), extra = ::compositorBusyNs, onWanted = ::compositorTiming)
+        val load = LayerLoad(guestLoadDir(hudDir), extra = ::compositorBusyNs, onWanted = ::compositorTiming)
             .also { it.clear(); layerLoad = it }
         val sampled = KgslBusy.open()?.let { reader ->
             memstore = reader
@@ -353,7 +353,7 @@ class GpuStatsComponent(val dir: File, private val root: File) : SessionPart() {
 
         private const val STALE_MS = 30_000L
 
-        fun guestLoadDir(root: File) = File(root, GUEST_LOAD_DIR.removePrefix("/"))
+        fun guestLoadDir(hudDir: File) = File(hudDir, "gpu-load")
 
         // A feed with no value yet (the HUD hidden at start) still needs its file, or binds() leaves its node out for
         // the whole session.
@@ -363,9 +363,9 @@ class GpuStatsComponent(val dir: File, private val root: File) : SessionPart() {
         fun loadBlocked(): Boolean = File(KGSL).exists() && !File(GPUBUSY).canRead() && LOAD_SOURCES.none { File(it).canRead() }
 
         /** Turns on the in-game layer (tools/gpuload) where the load is blocked; empty elsewhere. */
-        fun guestEnv(root: File): List<String> {
+        fun guestEnv(hudDir: File): List<String> {
             if (!loadBlocked()) return emptyList()
-            guestLoadDir(root).mkdirs()
+            guestLoadDir(hudDir).mkdirs()
             return listOf("DROIDDECK_GPU_LOAD=1", "DROIDDECK_GPU_LOAD_DIR=$GUEST_LOAD_DIR")
         }
         private const val QCOM_GPU = "/sys/kernel/gpu"

@@ -36,7 +36,7 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(blocked, {})
 
     def test_everything_else_fails_closed(self):
-        changes = {'app/src/main/java/com/droiddeck/launcher/Foo.kt': 'M', 'tools/proot/build.sh': 'M',
+        changes = {'app/src/main/java/com/droiddeck/launcher/Foo.kt': 'M', 'tools/components/build-arm64-preloads.sh': 'M',
                    'tools/linuxfs/overlay/usr/local/bin/droiddeck-new': 'A'}
         self.assertEqual(set(self.classify(changes)[2]), set(changes))
         self.assertEqual(set(self.classify({self.agent: 'D'})[2]), {self.agent})

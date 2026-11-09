@@ -1,3 +1,5 @@
+> 已过时：DroidDeck 已改用 DroidSpaces 容器运行时，见 [container-runtime.md](container-runtime.md)。本文保留为历史研究记录。
+
 # proroot: what it does and what DroidDeck can take from it
 
 Static analysis of [coderredlab/proroot](https://github.com/coderredlab/proroot) v1.2.8

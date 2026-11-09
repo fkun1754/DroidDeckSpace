@@ -1,17 +1,22 @@
 package com.droiddeck.launcher.runtime
 
 import android.content.Context
-import android.os.Environment
+import android.os.Process
+import android.util.Log
 import com.droiddeck.launcher.core.DownloadSource
-import com.droiddeck.launcher.core.HostProcess
-import com.droiddeck.launcher.session.OrphanReaper
+import com.droiddeck.launcher.runtime.container.ContainerEnv
+import com.droiddeck.launcher.runtime.container.ContainerPaths
+import com.droiddeck.launcher.runtime.container.ContainerRuntime
+import com.droiddeck.launcher.runtime.container.DroidspacesCli
 import com.droiddeck.launcher.session.SessionFiles
 import com.droiddeck.launcher.session.SessionPaths
-import com.droiddeck.launcher.session.SessionPrefs
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 object GuestCommand {
+    private const val TAG = "GuestCommand"
+    private const val ENV_TOOL = "/usr/bin/env"
+
     fun run(context: Context, argv: List<String>, fakeRoot: Boolean = false, logName: String? = null,
             linkDir: File? = null, extraBinds: List<String>? = null, fastPath: Boolean = false, cancelled: AtomicBoolean? = null,
             onLine: (String) -> Unit): Int {
@@ -22,75 +27,113 @@ object GuestCommand {
         }
         log?.println("== ${java.util.Date()} ${argv.joinToString(" ")}")
         try {
-            return runLogged(context, argv, fakeRoot, linkDir, extraBinds, fastPath, cancelled) { line -> log?.println(line); log?.flush(); onLine(line) }
+            return runLogged(context, argv, fakeRoot, cancelled) { line -> log?.println(line); log?.flush(); onLine(line) }
         } finally {
             log?.close()
         }
     }
 
-    private fun runLogged(context: Context, argv: List<String>, fakeRoot: Boolean, linkDir: File?, extraBinds: List<String>?,
-                          fastPath: Boolean, cancelled: AtomicBoolean?, onLine: (String) -> Unit): Int {
-        val root = LinuxRuntime.rootDir(context)
+    private fun runLogged(context: Context, argv: List<String>, fakeRoot: Boolean,
+                          cancelled: AtomicBoolean?, onLine: (String) -> Unit): Int {
         LinuxRuntime.writeAccounts(context)
-        SessionFiles.stage(context, root)
-        LinuxNetworkLinkComponent(context, root).publish()
-        val runtimeDir = File(context.filesDir, ".flatpak-rt").apply { mkdirs() }
-        val cmd = LinuxRuntime.prootPrefix(context, root, "/root", fakeRoot)
-        if (linkDir != null) cmd.add(1, "--link2symlink")
-        val binds = LinuxRuntime.binds(context, null, runtimeDir, Environment.getExternalStorageDirectory(), extraBinds)
-        binds.forEach { cmd.add("-b"); cmd.add(it) }
-        val fastPathKey = if (fastPath && !fakeRoot && linkDir == null && ProotFastPath.enabled(context)) ProotFastPath.key(root, binds) else null
-        cmd += listOf(
-            "/usr/bin/env", "-i", "HOME=/root", "USER=root", "LANG=C.UTF-8",
-            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games", "XDG_RUNTIME_DIR=${LinuxRuntime.GUEST_RUNTIME_DIR}",
-            "XDG_DATA_HOME=/root/.local/share", "FLATPAK_BWRAP=${FlatpakManager.BWRAP}",
-            "DROIDDECK_BWRAP_SOCKET=${BwrapSpawner.socket(context)}",
-            "XDG_DATA_DIRS=/root/.local/share/flatpak/exports/share:/usr/local/share:/usr/share",
-        )
+        SessionFiles.stage(context, LinuxRuntime.rootDir(context))
+        val command = withCleanEnvironment(translateGuestArgs(context, argv), env = defaultEnvironment(context))
+        return try {
+            ensureContainer(context)
+            val uid = if (fakeRoot) null else Process.myUid()
+            val result = DroidspacesCli.execUnlimited(context, ContainerPaths.CONTAINER_NAME, uid, command,
+                { line -> onLine(line) }, cancelled)
+            result.exitCode
+        } catch (e: Exception) {
+            Log.e(TAG, "guest command failed: ${argv.joinToString(" ")}", e)
+            onLine("droiddeck: ${e.message ?: e.javaClass.simpleName}")
+            -1
+        }
+    }
+
+    /**
+     * Callers built their arguments while proot kept host paths identical inside the guest; the
+     * container has its own view, so host paths that point into app data are translated here.
+     */
+    private fun translateGuestArgs(context: Context, argv: List<String>): List<String> {
+        val prefixes = listOf(context.filesDir.path, context.noBackupFilesDir.path, context.cacheDir.path)
+        fun translate(value: String): String {
+            if (prefixes.none { value == it || value.startsWith("$it/") }) return value
+            return runCatching { ContainerEnv.guestPath(context, value) }.getOrDefault(value)
+        }
+        return argv.map { arg ->
+            val separator = arg.indexOf('=')
+            if (separator > 0 && !arg.startsWith("/")) {
+                arg.substring(0, separator + 1) + translate(arg.substring(separator + 1))
+            } else {
+                translate(arg)
+            }
+        }
+    }
+
+    /** The clean environment one-shot guest commands used to get from proot's `env -i`. */
+    fun withCleanEnvironment(argv: List<String>, envTool: String = ENV_TOOL,
+                             env: Map<String, String> = emptyMap()): List<String> {
+        val out = ArrayList<String>(argv.size + env.size + 2)
+        out.add(envTool)
+        out.add("-i")
+        env.forEach { (key, value) -> out.add("$key=$value") }
+        out.addAll(argv)
+        return out
+    }
+
+    fun defaultEnvironment(context: Context): Map<String, String> {
+        val env = LinkedHashMap<String, String>()
+        env["HOME"] = "/root"
+        env["USER"] = "root"
+        env["LANG"] = "C.UTF-8"
+        env["PATH"] = LinuxRuntime.GUEST_PATH
+        env["XDG_RUNTIME_DIR"] = LinuxRuntime.GUEST_RUNTIME_DIR
+        env["XDG_DATA_HOME"] = "/root/.local/share"
+        env["FLATPAK_BWRAP"] = FlatpakManager.BWRAP
+        env["DROIDDECK_BWRAP_SOCKET"] = BwrapSpawner.socket(context)
+        env["XDG_DATA_DIRS"] = "/root/.local/share/flatpak/exports/share:/usr/local/share:/usr/share"
         DownloadSource.proxyHostPort(context).takeIf { it.isNotEmpty() }?.let { hostPort ->
-            cmd += listOf(
-                "http_proxy=http://$hostPort", "https_proxy=http://$hostPort",
-                "HTTP_PROXY=http://$hostPort", "HTTPS_PROXY=http://$hostPort",
-                "no_proxy=localhost,127.0.0.1,::1", "NO_PROXY=localhost,127.0.0.1,::1",
-            )
+            for (key in listOf("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY")) env[key] = "http://$hostPort"
+            for (key in listOf("no_proxy", "NO_PROXY")) env[key] = "localhost,127.0.0.1,::1"
         }
-        fastPathKey?.let { cmd += ProotFastPath.guestEnv(root, binds, it) }
-        cmd += argv
-        val builder = ProcessBuilder(cmd).directory(root).redirectErrorStream(true)
-        builder.environment().apply {
-            put("PROOT_LOADER", LinuxRuntime.prootLoader(context).path)
-            put("PROOT_TMP_DIR", LinuxRuntime.prootTempDir(context).path)
-            if (linkDir != null) put("PROOT_L2S_DIR", linkDir.path)
-            if (SessionPrefs.prootNoSeccomp(context)) put("PROOT_NO_SECCOMP", "1")
-            fastPathKey?.let { ProotFastPath.hostEnv(it).let { (k, v) -> put(k, v) } }
-            LinuxRuntime.prootLibraryPath(context).takeIf { it.isNotEmpty() }?.let { put("LD_LIBRARY_PATH", it) }
-        }
-        if (cancelled?.get() == true) return 130
-        val process = builder.start()
-        val pid = HostProcess.pidOf(process)
-        OrphanReaper.keep(pid)
-        val watcher = cancelled?.let { flag ->
-            Thread({
-                try {
-                    while (process.isAlive && !flag.get()) Thread.sleep(200)
-                    if (flag.get()) {
-                        if (pid > 0) {
-                            runCatching { android.system.Os.kill(pid, android.system.OsConstants.SIGQUIT) }
-                        } else {
-                            process.destroy()
-                        }
-                        if (!process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) process.destroyForcibly()
-                    }
-                } catch (_: InterruptedException) {
-                }
-            }, "guest-cancel").apply { isDaemon = true; start() }
-        }
-        try {
-            process.inputStream.bufferedReader().useLines { lines -> lines.forEach(onLine) }
-            return process.waitFor()
-        } finally {
-            watcher?.interrupt()
-            OrphanReaper.release(pid)
-        }
+        return env
+    }
+
+    /** Runs [argv] with [env] in the container, applying [cwd] first when set. */
+    fun containerArgv(envTool: String, env: Map<String, String>, cwd: String?, argv: List<String>): List<String> {
+        val exec = withCleanEnvironment(argv, envTool, env)
+        if (cwd == null) return exec
+        val line = "cd " + LinuxRuntime.shellQuote(cwd) + " && exec " +
+            exec.joinToString(" ") { LinuxRuntime.shellQuote(it) }
+        return listOf("/bin/sh", "-c", line)
+    }
+
+    /** `["su", "-c", "<droidspaces ... run -- ...>"]` for callers that spawn a host process. */
+    fun hostProcessCommand(argv: List<String>, stdin: Boolean = false): List<String> {
+        val cli = ArrayList<String>()
+        cli.add(ContainerPaths.CLI)
+        cli.add("-n")
+        cli.add(ContainerPaths.CONTAINER_NAME)
+        if (stdin) cli.add("--stdin")
+        cli.add("run")
+        cli.add("--")
+        cli.addAll(argv)
+        return listOf(LinuxRuntime.suBinary(), "-c", cli.joinToString(" ") { LinuxRuntime.shellQuote(it) })
+    }
+
+    /** Shell for the in-app terminal: the container's login environment plus the session's env file. */
+    fun terminalCommand(): List<String> {
+        val env = ContainerPaths.GUEST_SESSION_ENV
+        val line = "set -a; [ -f $env ] && . $env; exec /bin/bash -i"
+        return hostProcessCommand(listOf("/bin/bash", "-c", line))
+    }
+
+    fun ensureContainer(context: Context) {
+        if (ContainerRuntime.isRunning(context)) return
+        // A maintenance container can be the first one ever started, and droidspaces checks the
+        // init path inside the rootfs: the staged session scripts must be there first.
+        SessionFiles.stage(context, LinuxRuntime.rootDir(context))
+        ContainerRuntime.startMaintenance(context)
     }
 }

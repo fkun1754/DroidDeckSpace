@@ -5,8 +5,6 @@ import android.os.Environment
 import com.droiddeck.launcher.core.AddonPack
 import com.droiddeck.launcher.runtime.LinuxNetworkLinkComponent
 import com.droiddeck.launcher.runtime.LinuxRuntime
-import com.droiddeck.launcher.runtime.ProotFastPath
-import com.droiddeck.launcher.session.SessionPrefs
 import com.droiddeck.launcher.stores.StoreInstallRoot
 import org.json.JSONObject
 import java.io.Closeable
@@ -82,34 +80,20 @@ internal object Xodus {
             networkLink.start()
             val runtime = (runtimeDirectory ?: File(app.filesDir, "xbox-runtime")).apply { mkdirs() }
             val root = LinuxRuntime.rootDir(app)
-            val external = Environment.getExternalStorageDirectory()
-            val extraBinds = StoreInstallRoot.externalBindSpecsForXodus(app)
-            val binds = LinuxRuntime.binds(app, null, null, external, extraBinds)
-            val fastPathPreloaded = runCatching {
-                File(root, "etc/ld.so.preload").useLines { lines -> lines.any { it.trim() == ProotFastPath.LIBRARY } }
-            }.getOrDefault(false)
-            val fastPathKey = if (ProotFastPath.enabled(app) && fastPathPreloaded &&
-                File(root, ProotFastPath.LIBRARY.removePrefix("/")).isFile) ProotFastPath.key(root, binds) else null
             val guestCommand = mutableListOf(
                 "/usr/bin/env", "HOME=/root", "XODUS_LOG=off", "RUST_LOG=off",
-                "XDG_RUNTIME_DIR=${runtime.path}", "DROIDDECK_XBOX_CREDENTIAL_SOCKET=${credentials.name}", binary,
+                "XDG_RUNTIME_DIR=${LinuxRuntime.GUEST_RUNTIME_DIR}",
+                "DROIDDECK_XBOX_CREDENTIAL_SOCKET=${credentials.name}", binary,
             )
-            fastPathKey?.let { key ->
-                guestCommand.addAll(guestCommand.lastIndex, ProotFastPath.guestEnv(root, binds, key))
-            }
             guestCommand.addAll(args)
-            val command = LinuxRuntime.commandWithBinds(app, root, binds, guestCommand)
+            runCatching { com.droiddeck.launcher.runtime.GuestCommand.ensureContainer(app) }
+            val command = LinuxRuntime.command(app, null, runtime, Environment.getExternalStorageDirectory(), guestCommand)
             val builder = ProcessBuilder(command).directory(LinuxRuntime.rootDir(app))
             if (launchDirectory != null) builder.environment()["TMPDIR"] = launchDirectory.path
             builder.environment()["DROIDDECK_XBOX_CREDENTIAL_PORT"] = credentials.port.toString()
             builder.environment()["DROIDDECK_XBOX_CREDENTIAL_KEY"] = credentials.key
             builder.environment().apply {
                 remove("LD_PRELOAD"); remove("LD_AUDIT"); remove("LD_LIBRARY_PATH")
-                put("PROOT_LOADER", LinuxRuntime.prootLoader(app).path)
-                put("PROOT_TMP_DIR", LinuxRuntime.prootTempDir(app).path)
-                if (SessionPrefs.prootNoSeccomp(app)) put("PROOT_NO_SECCOMP", "1")
-                fastPathKey?.let { ProotFastPath.hostEnv(it).let { (key, value) -> put(key, value) } }
-                LinuxRuntime.prootLibraryPath(app).takeIf { it.isNotEmpty() }?.let { put("LD_LIBRARY_PATH", it) }
             }
             val digest = java.security.MessageDigest.getInstance("SHA-256")
             File(pack, binary.removePrefix("$DIR/")).inputStream().use { input ->

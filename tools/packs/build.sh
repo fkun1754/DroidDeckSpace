@@ -67,9 +67,6 @@ unzip -q -j "$work/opencv.aar" jni/arm64-v8a/libopencv_java4.so -d "$work/tracki
 unzip -q -j "$work/tasks-core.aar" jni/arm64-v8a/libmediapipe_tasks_jni.so -d "$work/tracking"
 chmod 0644 "$work/tracking"/*
 
-mkdir "$work/proot"
-install -m755 "$repo/app/src/main/jniLibs/arm64-v8a/libproot.so" "$repo/app/src/main/jniLibs/arm64-v8a/libproot-loader.so" "$work/proot/"
-pack proot "$work/proot" libproot.so libproot-loader.so
 pack directaudio "$repo/app/src/main/assets/directaudio" \
     linux-wine11/version.txt linux-wine11-systhread/version.txt
 pack tracking "$work/tracking" hand_landmarker.task hand_landmarker_lite.task pose_landmarker_lite.task \

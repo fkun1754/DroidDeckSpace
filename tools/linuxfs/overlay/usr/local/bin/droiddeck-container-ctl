@@ -1,0 +1,177 @@
+#!/bin/sh
+# DroidDeck guest control CLI. The app calls it through
+#   droidspaces run -n <name> -- droiddeck-container-ctl <op> [args]
+# Output is line-oriented and parsed by the app. Contract: docs/development/container-runtime.md §3.3.
+set -u
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}
+export PATH
+LC_ALL=C
+export LC_ALL
+
+usage() {
+  cat >&2 <<'EOF'
+usage: droiddeck-container-ctl <op> [args]
+  ps                       one line per process: <pid> <ppid> <uid> <stat> <comm> <args...>
+  stat                     boot=<btime> pids=<n> uptime=<s>
+  signal <sig> <pid...>    sig: TERM, KILL, STOP, CONT, INT or HUP
+  freeze                   STOP every guest process except PID 1 and this command
+  resume                   CONT every stopped guest process
+  kill <pid...>            alias for signal KILL
+EOF
+}
+
+err() { printf 'droiddeck-container-ctl: %s\n' "$*" >&2; }
+is_uint() { case ${1:-} in '' | *[!0-9]*) return 1 ;; esac; return 0; }
+
+# /proc is the only source: procps, busybox ps and toybox ps disagree on columns and flags.
+print_process() {
+  _pid=$1
+  [ -r "/proc/$_pid/stat" ] && [ -r "/proc/$_pid/status" ] || return 0
+  _stat=$(cat "/proc/$_pid/stat" 2>/dev/null) || return 0
+  _rest=${_stat##*) }
+  set -- $_rest
+  [ $# -ge 2 ] || return 0
+  _state=$1
+  _ppid=$2
+  _comm=${_stat#*(}
+  _comm=${_comm%%)*}
+  _uid=0
+  while IFS= read -r _line; do
+    case $_line in
+      Uid:*) set -- ${_line#Uid:}; _uid=${1:-0}; break ;;
+    esac
+  done < "/proc/$_pid/status" 2>/dev/null
+  _args=$(tr '\000' ' ' < "/proc/$_pid/cmdline" 2>/dev/null | tr '\n\r' '  ')
+  _args=${_args% }
+  [ -n "$_args" ] || _args=$_comm
+  printf '%s %s %s %s %s %s\n' "$_pid" "$_ppid" "$_uid" "$_state" "$_comm" "$_args"
+}
+
+guest_pids() {
+  for _d in /proc/[0-9]*; do
+    _pid=${_d##*/}
+    [ "$_pid" = 1 ] && continue
+    [ "$_pid" = "$$" ] && continue
+    printf '%s\n' "$_pid"
+  done
+}
+
+cmd_ps() {
+  for _d in /proc/[0-9]*; do
+    _pid=${_d##*/}
+    [ "$_pid" = 1 ] && continue
+    [ "$_pid" = "$$" ] && continue
+    print_process "$_pid"
+  done
+}
+
+cmd_stat() {
+  _boot=0
+  while IFS= read -r _line; do
+    case $_line in
+      btime\ *) _boot=${_line#btime }; break ;;
+    esac
+  done < /proc/stat
+  _up=0
+  read -r _up _ < /proc/uptime 2>/dev/null || true
+  _uptime=${_up%%.*}
+  is_uint "$_uptime" || _uptime=0
+  _pids=0
+  for _d in /proc/[0-9]*; do
+    _pids=$((_pids + 1))
+  done
+  printf 'boot=%s pids=%s uptime=%s\n' "$_boot" "$_pids" "$_uptime"
+}
+
+cmd_signal() {
+  _sig=$1
+  shift
+  _sig=$(printf '%s' "$_sig" | tr '[:lower:]' '[:upper:]')
+  case $_sig in
+    TERM | KILL | STOP | CONT | INT | HUP) ;;
+    *)
+      err "unknown signal: $_sig (TERM, KILL, STOP, CONT, INT, HUP)"
+      return 2
+      ;;
+  esac
+  _rc=0
+  for _pid in "$@"; do
+    if ! is_uint "$_pid" || [ "$_pid" -lt 1 ]; then
+      printf 'fail %s %s: invalid pid\n' "$_sig" "$_pid"
+      _rc=1
+      continue
+    fi
+    if kill -s "$_sig" "$_pid" 2>/dev/null; then
+      printf 'ok %s %s\n' "$_sig" "$_pid"
+    else
+      printf 'fail %s %s\n' "$_sig" "$_pid"
+      _rc=1
+    fi
+  done
+  return $_rc
+}
+
+cmd_freeze() {
+  for _pid in $(guest_pids); do
+    kill -STOP "$_pid" 2>/dev/null || true
+  done
+  return 0
+}
+
+cmd_resume() {
+  for _d in /proc/[0-9]*; do
+    _pid=${_d##*/}
+    [ "$_pid" = "$$" ] && continue
+    _line=$(cat "/proc/$_pid/stat" 2>/dev/null) || continue
+    _rest=${_line##*) }
+    set -- $_rest
+    [ $# -ge 1 ] || continue
+    case $1 in
+      T | t) kill -CONT "$_pid" 2>/dev/null || true ;;
+    esac
+  done
+  return 0
+}
+
+_op=${1:-}
+[ $# -gt 0 ] && shift
+case $_op in
+  ps)
+    [ $# -eq 0 ] || { err "ps takes no arguments"; exit 2; }
+    cmd_ps
+    ;;
+  stat)
+    [ $# -eq 0 ] || { err "stat takes no arguments"; exit 2; }
+    cmd_stat
+    ;;
+  signal)
+    [ $# -ge 2 ] || { err "signal needs a signal name and at least one pid"; usage; exit 2; }
+    cmd_signal "$@"
+    ;;
+  kill)
+    [ $# -ge 1 ] || { err "kill needs at least one pid"; usage; exit 2; }
+    cmd_signal KILL "$@"
+    ;;
+  freeze)
+    [ $# -eq 0 ] || { err "freeze takes no arguments"; exit 2; }
+    cmd_freeze
+    ;;
+  resume)
+    [ $# -eq 0 ] || { err "resume takes no arguments"; exit 2; }
+    cmd_resume
+    ;;
+  -h | --help | help)
+    usage
+    exit 0
+    ;;
+  '')
+    usage
+    exit 2
+    ;;
+  *)
+    err "unknown operation: $_op"
+    usage
+    exit 2
+    ;;
+esac
+exit $?

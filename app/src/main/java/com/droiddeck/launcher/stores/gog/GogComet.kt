@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.droiddeck.launcher.core.AddonPack
 import com.droiddeck.launcher.runtime.LinuxRuntime
+import com.droiddeck.launcher.runtime.container.ContainerEnv
 import com.droiddeck.launcher.session.SessionEvents
 import com.droiddeck.launcher.session.SessionPrefs
 import com.droiddeck.launcher.session.SessionState
@@ -139,15 +140,12 @@ object GogComet {
             !File(LinuxRuntime.rootDir(context), BIN.removePrefix("/")).isFile) return reply(false, "not-installed")
         val data = File(context.filesDir, "gog-achievements").apply { mkdirs() }
         val ready = CountDownLatch(1)
+        val dataGuest = ContainerEnv.guestPath(context, data.path)
         val command = LinuxRuntime.command(context, null, null, Environment.getExternalStorageDirectory(),
-            listOf("/usr/bin/env", "HOME=/root", "XDG_DATA_HOME=${data.path}/data", "XDG_CONFIG_HOME=${data.path}/config", "COMET_LOG=off", "COMET_ALLOWED_CLIENTS=${policy.path}", BIN, "--credentials-stdin"))
+            listOf("/usr/bin/env", "HOME=/root", "XDG_DATA_HOME=$dataGuest/data", "XDG_CONFIG_HOME=$dataGuest/config", "COMET_LOG=off", "COMET_ALLOWED_CLIENTS=${ContainerEnv.guestPath(context, policy.path)}", BIN, "--credentials-stdin"))
         val pb = ProcessBuilder(command).redirectErrorStream(true)
         pb.environment().apply {
             remove("LD_PRELOAD"); remove("LD_AUDIT"); remove("LD_LIBRARY_PATH")
-            put("PROOT_LOADER", LinuxRuntime.prootLoader(context).path)
-            put("PROOT_TMP_DIR", LinuxRuntime.prootTempDir(context).path)
-            if (SessionPrefs.prootNoSeccomp(context)) put("PROOT_NO_SECCOMP", "1")
-            LinuxRuntime.prootLibraryPath(context).takeIf { it.isNotEmpty() }?.let { put("LD_LIBRARY_PATH", it) }
         }
         try {
             val child = pb.start()

@@ -15,10 +15,8 @@ MANIFEST = Path('app/build/runtime-inputs.json')
 PACKS = Path('app/build/packs')
 PACKED = {'assets/linuxfs/usr/local/lib/droiddeck-xbox/': 'xbox', 'assets/linuxfs/usr/local/lib/droiddeck-comet/': 'comet',
           'assets/directaudio/': 'directaudio', 'assets/hybris/': 'powervr'}
-PACKED_FILES = {'lib/arm64-v8a/libproot.so': ('proot', 'libproot.so'),
-                'lib/arm64-v8a/libproot-loader.so': ('proot', 'libproot-loader.so')}
 PACKED_LIBRARIES = ['lib/arm64-v8a/libopencv_java4.so', 'lib/arm64-v8a/libmediapipe_tasks_jni.so']
-PACK_NAMES = ['proot', 'directaudio', 'tracking', 'xbox', 'comet', 'butler', 'powervr']
+PACK_NAMES = ['directaudio', 'tracking', 'xbox', 'comet', 'butler', 'powervr']
 SOURCE_PATHS = ['app/build.gradle', 'app/src/main/cpp/fakeinput_steam.cpp', 'app/src/main/assets/pulseaudio.tzst',
                 'tools/linuxfs', 'tools/proot', 'tools/aaudio-sink', 'tools/directaudio', 'tools/packs',
                 'tools/gamescope/release.env', 'tools/droiddeck-esync/release.env',
@@ -60,7 +58,7 @@ def outputs(root):
         for path in base.rglob('*'):
             if path.is_file() and not any(part.startswith('.') for part in path.relative_to(base).parts):
                 result['assets/' + tree + '/' + path.relative_to(base).as_posix()] = path.relative_to(root).as_posix()
-    for library in ['libproot.so', 'libproot-loader.so', 'libdirectaudiorelay.so']:
+    for library in ['libdirectaudiorelay.so']:
         result['lib/arm64-v8a/' + library] = 'app/src/main/jniLibs/arm64-v8a/' + library
     result['assets/pulseaudio.tzst'] = 'app/build/prepared-assets/pulseaudio.tzst'
     result['assets/graphics_driver/adrenotools-turnip25.1.0-quest1.tzst'] = \
@@ -114,7 +112,6 @@ def required():
                   ['aarch64-unix/winedirectaudio.so', 'aarch64-windows/winedirectaudio.drv',
                    'i386-windows/winedirectaudio.drv', 'version.txt']]
     paths += ['assets/droiddeck-esync/index.json', 'assets/droiddeck-esync/index.json.sig',
-              'lib/arm64-v8a/libproot.so', 'lib/arm64-v8a/libproot-loader.so',
               'lib/arm64-v8a/libdirectaudiorelay.so', 'assets/pulseaudio.tzst']
     paths += ['assets/desktop-removal/' + name for name in
               ['lxqt-r1.tsv.gzip', 'kde-remove.tsv.gzip', 'kde-keep.txt.gzip',
@@ -220,13 +217,6 @@ def check_apk(apk, root=ROOT):
             if library.rsplit('/', 1)[1] not in packs['tracking']:
                 raise ValueError('Tracking pack missing ' + library)
         for name, output in data['outputs'].items():
-            if name in PACKED_FILES:
-                pack, rel = PACKED_FILES[name]
-                if name in names:
-                    raise ValueError('APK still carries ' + name + ', which the ' + pack + ' pack provides')
-                if packs[pack].get(rel) != output['sha256']:
-                    raise ValueError('Add-on pack ' + pack + ' is missing or has a stale ' + name)
-                continue
             prefix = next((p for p in PACKED if name.startswith(p)), None)
             if prefix:
                 if name in names:

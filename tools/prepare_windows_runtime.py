@@ -60,7 +60,7 @@ REBUILT_SHA256 = {
     'x86_64/libblsession.so': 'd0a558fee1ac4d5b898170a96b03e15610d9835e7097425027b8c31728da870a',
     'i386/libblsession.so': '785d8d9bf1fa20d083a7fed65d064c7580684d7065530d95a648e2d32901d2a2',
 }
-JNI = ('libproot.so', 'libproot-loader.so', 'libdirectaudiorelay.so')
+JNI = ('libdirectaudiorelay.so',)
 PREPARED = ('pulseaudio.tzst',
             'graphics_driver/adrenotools-turnip25.1.0-quest1.tzst',
             'graphics_driver/adrenotools-turnip26.3.0-a6xx.tzst',

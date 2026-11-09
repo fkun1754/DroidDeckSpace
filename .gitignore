@@ -9,10 +9,6 @@ captures/
 .cxx/
 .kotlin/
 app/src/main/assets/linuxfs/
-app/src/main/jniLibs/arm64-v8a/libproot.so
-app/src/main/jniLibs/arm64-v8a/.proot-inputs
-app/src/main/jniLibs/arm64-v8a/.proot-outputs
-app/src/main/jniLibs/arm64-v8a/libproot-loader.so
 app/src/main/jniLibs/arm64-v8a/libsyncthingnative.so
 app/src/main/jniLibs/arm64-v8a/.syncthing-inputs
 app/src/main/jniLibs/arm64-v8a/libdirectaudiorelay.so

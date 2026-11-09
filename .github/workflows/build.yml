@@ -212,14 +212,6 @@ jobs:
         with:
           path: pa13
           key: pulseaudio-src-${{ steps.plan.outputs.pulseaudio-source }}
-      - name: Cache proot
-        id: proot
-        uses: actions/cache@v4
-        with:
-          path: |
-            app/src/main/jniLibs/arm64-v8a/libproot.so
-            app/src/main/jniLibs/arm64-v8a/libproot-loader.so
-          key: proot-v2-${{ steps.plan.outputs.proot }}
       - name: Cache GOG Galaxy companion
         id: comet
         uses: actions/cache@v4
@@ -277,10 +269,6 @@ jobs:
 
       - name: Build the AAudio sink into the audio bundle
         run: python3 tools/components/prepare.py audio
-
-      - name: Build proot
-        if: steps.proot.outputs.cache-hit != 'true'
-        run: python3 tools/components/prepare.py proot
 
       - name: Build the non-Adreno test additions (Mali bridge client, Venus GL probe, Xclipse layer)
         run: |
@@ -596,16 +584,6 @@ jobs:
           set -euo pipefail
           export NDK="$ANDROID_HOME/ndk/$NDK_VERSION"
           tools/syncthing/build.sh app/src/main/jniLibs/arm64-v8a
-
-      - name: Note when the proot pack pin is behind this build
-        run: |
-          set -euo pipefail
-          # shellcheck disable=SC1091
-          source tools/packs/proot/release.env
-          sha=$(sha256sum app/build/packs/proot.tar.zst | cut -d' ' -f1)
-          if [ "$sha" != "$PROOT_PACK_SHA256" ]; then
-            echo "::warning::built proot pack $sha does not match tools/packs/proot/release.env ($PROOT_PACK_SHA256). This build publishes the pack it just built. Source builds keep downloading the pinned pack until release.env is updated."
-          fi
 
       - name: Check out MaliBridge
         run: git submodule update --init external/MaliBridge

@@ -34,7 +34,7 @@ private const val STRIP_TEMP_PLAIN = 0xFFF2F5F9.toInt()
 @Composable
 internal fun SessionBottomStrip(pageId: String?, fps: () -> Float?) {
     val context = LocalContext.current
-    val frames = remember { GameFrameFeed(File(LinuxRuntime.rootDir(context), HudFrames.PATH)) }
+    val frames = remember { GameFrameFeed(HudFrames.hostFile(context)) }
     DisposableEffect(frames) { onDispose { frames.close() } }
     val page by rememberUpdatedState(pageId)
     var frameTick by remember { mutableIntStateOf(0) }
@@ -51,7 +51,7 @@ internal fun SessionBottomStrip(pageId: String?, fps: () -> Float?) {
         }
     }
     LaunchedEffect(Unit) {
-        val reader = HudMetrics(context).apply { setMangoReadings(MangoReadings(File(context.filesDir, "session"), LinuxRuntime.rootDir(context))) }
+        val reader = HudMetrics(context).apply { setMangoReadings(MangoReadings(File(context.filesDir, "session"), LinuxRuntime.hudDir(context))) }
         thresholds = withContext(Dispatchers.IO) {
             HudMetrics.TempSensor.values().mapNotNull { sensor -> runCatching { sensor to reader.resolveThresholds(sensor, tempDisplay) }.getOrNull() }.toMap()
         }

@@ -24,8 +24,8 @@ import kotlin.math.roundToInt
 class DroidDeckHudHost(context: Context) {
     private val context = context.applicationContext
     private val handler = Handler(Looper.getMainLooper())
-    private val feed = GameFrameFeed(File(LinuxRuntime.rootDir(this.context), HudFrames.PATH))
-    private val readings = MangoReadings(File(this.context.filesDir, "session"), LinuxRuntime.rootDir(this.context))
+    private val feed = GameFrameFeed(HudFrames.hostFile(this.context))
+    private val readings = MangoReadings(File(this.context.filesDir, "session"), LinuxRuntime.hudDir(this.context))
     private var view: DroidDeckHudView? = null
     private var parent: ViewGroup? = null
     private var running = false
@@ -195,7 +195,7 @@ class DroidDeckHudHost(context: Context) {
         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
         val file = File(dir, "HUD-diagnostics-$stamp.txt")
         val metrics = HudMetrics(context)
-        metrics.setMangoReadings(MangoReadings(File(context.filesDir, "session"), LinuxRuntime.rootDir(context)))
+        metrics.setMangoReadings(MangoReadings(File(context.filesDir, "session"), LinuxRuntime.hudDir(context)))
         metrics.snapshot()
         Thread.sleep(500)
         val mango = metrics.snapshot()
