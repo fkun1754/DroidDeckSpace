@@ -23,6 +23,11 @@ public final class ExecResult {
         return new ExecResult(command, -1, "", message, false, 0);
     }
 
+    /** A command that the root-side watchdog (or the App-side fallback) had to kill. */
+    public static ExecResult timeout(String command, String stdout, String stderr, long durationMs) {
+        return new ExecResult(command, -1, stdout, stderr, true, durationMs);
+    }
+
     public boolean ok() {
         return exitCode == 0 && !timedOut;
     }

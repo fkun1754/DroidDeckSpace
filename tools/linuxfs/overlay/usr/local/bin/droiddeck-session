@@ -1,5 +1,14 @@
 #!/bin/bash
 set -u
+# Opt-in child-process trace: the host drops a marker file to log every command and the exit
+# point of the nested session shell (BL_INSIDE=1) into trace-child.log.
+if [ -f /dd/session/trace-child.enable ] && [ "${BL_INSIDE:-0}" = 1 ]; then
+  exec 3>>/dd/session/trace-child.log
+  export BASH_XTRACEFD=3
+  PS4='+$LINENO: '
+  set -x
+  trap 'echo "CHILD_EXIT rc=$? line=$LINENO" >&3 2>&1' EXIT
+fi
 # A GPU that is not an Adreno (BL_RAISE_NOFILE=1): the open-files limit goes up to the hard limit
 # for the whole session tree (gamescope, Steam, games). A Mali PanVK session ran out after ten
 # minutes ("Too many open files" importing sync files and dma-bufs) and froze.

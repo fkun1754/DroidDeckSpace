@@ -40,8 +40,9 @@ public final class ContainerSession {
 
     public void stop(Context context) {
         ExecResult result = DroidspacesCli.stop(name);
-        if (waitStopped(30_000)) return;
-        throw new IllegalStateException("container '" + name + "' is still running after stop\n"
+        if (waitStopped(ContainerRuntime.STOP_TIMEOUT_MS)) return;
+        throw new IllegalStateException("container '" + name + "' is still running after "
+                + ContainerRuntime.STOP_TIMEOUT_MS / 1000 + "s stop timeout\n"
                 + result.describe() + "\n" + ContainerRuntime.diagnostics(context, name));
     }
 

@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Process
 import android.util.Log
 import com.droiddeck.launcher.core.DownloadSource
+import com.droiddeck.launcher.runtime.container.ContainerControl
 import com.droiddeck.launcher.runtime.container.ContainerEnv
 import com.droiddeck.launcher.runtime.container.ContainerPaths
 import com.droiddeck.launcher.runtime.container.ContainerRuntime
@@ -12,10 +13,12 @@ import com.droiddeck.launcher.session.SessionFiles
 import com.droiddeck.launcher.session.SessionPaths
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 object GuestCommand {
     private const val TAG = "GuestCommand"
     private const val ENV_TOOL = "/usr/bin/env"
+    private const val PID_MARKER = "DROIDDECK_GUEST_PID"
 
     fun run(context: Context, argv: List<String>, fakeRoot: Boolean = false, logName: String? = null,
             linkDir: File? = null, extraBinds: List<String>? = null, fastPath: Boolean = false, cancelled: AtomicBoolean? = null,
@@ -37,17 +40,47 @@ object GuestCommand {
                           cancelled: AtomicBoolean?, onLine: (String) -> Unit): Int {
         LinuxRuntime.writeAccounts(context)
         SessionFiles.stage(context, LinuxRuntime.rootDir(context))
-        val command = withCleanEnvironment(translateGuestArgs(context, argv), env = defaultEnvironment(context))
+        val exec = withCleanEnvironment(translateGuestArgs(context, argv), env = defaultEnvironment(context))
+        val script = "echo $PID_MARKER:\$\$; exec " + exec.joinToString(" ") { LinuxRuntime.shellQuote(it) }
+        val guestPid = AtomicInteger(-1)
+        // Cancelling only ends the host-side wait: the root `su`/droidspaces client cannot be
+        // signalled by the app uid, so the guest command tree is killed through the ctl script.
+        val killer = cancelled?.let { flag ->
+            Thread({
+                try {
+                    while (!flag.get()) Thread.sleep(100)
+                    val deadline = System.currentTimeMillis() + 3_000
+                    var pid = guestPid.get()
+                    while (pid <= 1 && System.currentTimeMillis() < deadline) {
+                        Thread.sleep(50)
+                        pid = guestPid.get()
+                    }
+                    if (pid > 1) {
+                        Log.i(TAG, "cancelled: killing guest command $pid")
+                        killGuestProcess(context, pid)
+                    }
+                } catch (e: InterruptedException) {
+                }
+            }, "guest-cancel").apply { isDaemon = true; start() }
+        }
         return try {
             ensureContainer(context)
             val uid = if (fakeRoot) null else Process.myUid()
-            val result = DroidspacesCli.execUnlimited(context, ContainerPaths.CONTAINER_NAME, uid, command,
-                { line -> onLine(line) }, cancelled)
+            val result = DroidspacesCli.execUnlimited(context, ContainerPaths.CONTAINER_NAME, uid,
+                listOf("/bin/sh", "-c", script), { line ->
+                    if (guestPid.get() <= 0 && line.startsWith("$PID_MARKER:")) {
+                        line.removePrefix("$PID_MARKER:").trim().toIntOrNull()?.takeIf { it > 1 }?.let { guestPid.set(it) }
+                    } else {
+                        onLine(line)
+                    }
+                }, cancelled)
             result.exitCode
         } catch (e: Exception) {
             Log.e(TAG, "guest command failed: ${argv.joinToString(" ")}", e)
             onLine("droiddeck: ${e.message ?: e.javaClass.simpleName}")
             -1
+        } finally {
+            killer?.interrupt()
         }
     }
 
@@ -56,7 +89,12 @@ object GuestCommand {
      * container has its own view, so host paths that point into app data are translated here.
      */
     private fun translateGuestArgs(context: Context, argv: List<String>): List<String> {
-        val prefixes = listOf(context.filesDir.path, context.noBackupFilesDir.path, context.cacheDir.path)
+        val prefixes = listOf(
+            context.filesDir.path,
+            context.noBackupFilesDir.path,
+            context.cacheDir.path,
+            android.os.Environment.getExternalStorageDirectory().path,
+        )
         fun translate(value: String): String {
             if (prefixes.none { value == it || value.startsWith("$it/") }) return value
             return runCatching { ContainerEnv.guestPath(context, value) }.getOrDefault(value)
@@ -125,8 +163,25 @@ object GuestCommand {
     /** Shell for the in-app terminal: the container's login environment plus the session's env file. */
     fun terminalCommand(): List<String> {
         val env = ContainerPaths.GUEST_SESSION_ENV
-        val line = "set -a; [ -f $env ] && . $env; exec /bin/bash -i"
-        return hostProcessCommand(listOf("/bin/bash", "-c", line))
+        val pidFile = ContainerPaths.GUEST_APP + "/session/terminal.pid"
+        // The app cannot signal the root su wrapper, so the shell records its guest pid here and
+        // SessionService stops the shell through the container control script when the panel closes.
+        val line = "echo \$\$ > $pidFile; set -a; [ -f $env ] && . $env; exec /bin/bash -i"
+        return hostProcessCommand(listOf("/bin/bash", "-c", line), stdin = true)
+    }
+
+    /** Kills a guest process through the ctl script and confirms it disappeared from `ps`. */
+    fun killGuestProcess(context: Context, pid: Int): Boolean {
+        if (pid <= 1) return true
+        ContainerControl.killQuietly(context, pid)
+        val deadline = System.currentTimeMillis() + 2_000
+        while (System.currentTimeMillis() < deadline) {
+            val alive = runCatching { ContainerControl.ps(context) }.getOrNull()?.any { it.pid == pid } ?: false
+            if (!alive) return true
+            try { Thread.sleep(100) } catch (e: InterruptedException) { return false }
+        }
+        Log.w(TAG, "guest process $pid is still present after kill")
+        return false
     }
 
     fun ensureContainer(context: Context) {

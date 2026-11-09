@@ -27,6 +27,8 @@ public final class SuShell {
     private static final String[] SU_CANDIDATES = {"su", "/system/bin/su"};
     private static final int PROBE_TIMEOUT_MS = 5_000;
     private static final int OUTPUT_CAP = 256 * 1024;
+    private static final String WATCHDOG_MARKER = "__DROIDDECK_WATCHDOG_TIMEOUT__";
+    private static final int WATCHDOG_GRACE_MS = 3_000;
 
     private static final Object LOCK = new Object();
     private static Boolean rootAvailable;
@@ -73,9 +75,11 @@ public final class SuShell {
         synchronized (LOCK) {
             if (rootAvailable != null) return rootAvailable;
             for (String candidate : SU_CANDIDATES) {
-                ExecResult result = runRaw(Arrays.asList(candidate, "-c", "id -u"), "id -u",
-                        PROBE_TIMEOUT_MS, null, null, null, false);
-                if (result.exitCode == 0 && "0".equals(result.stdout.trim())) {
+                List<String> argv = Arrays.asList(candidate, "-c",
+                        watchdogScript("id -u", PROBE_TIMEOUT_MS));
+                ExecResult result = runRaw(argv, candidate + " -c 'id -u'",
+                        PROBE_TIMEOUT_MS + WATCHDOG_GRACE_MS, null, null, null, false, true);
+                if (!result.timedOut && result.exitCode == 0 && "0".equals(result.stdout.trim())) {
                     suBinary = candidate;
                     rootAvailable = true;
                     Log.i(TAG, "root shell available via " + candidate);
@@ -120,11 +124,34 @@ public final class SuShell {
             binary = suBinary;
         }
         if (binary == null) binary = "su";
-        List<String> argv = new ArrayList<>(3);
-        argv.add(binary);
-        argv.add("-c");
-        argv.add(command);
-        return runRaw(argv, command, timeoutMs, stdin, onLine, cancelled, mergeError);
+        // bounded commands get a root-side watchdog: the App has no permission to kill a root
+        // child of its own, so the root shell kills the command itself (it may only kill the
+        // host-side droidspaces process; guest children need ContainerControl + a guest pid).
+        boolean watchdog = timeoutMs > 0;
+        String executed = watchdog ? watchdogScript(command, timeoutMs) : command;
+        int waitMs = watchdog ? saturatedAdd(timeoutMs, WATCHDOG_GRACE_MS) : timeoutMs;
+        List<String> argv = Arrays.asList(binary, "-c", executed);
+        return runRaw(argv, command, waitMs, stdin, onLine, cancelled, mergeError, watchdog);
+    }
+
+    /**
+     * Wraps one shell command in a root-side timeout: the command runs as a background job with
+     * fd 0 duplicated to fd 9 (a background job would otherwise read /dev/null), a watchdog kills
+     * it at the deadline, and the wrapper exits with the command's own status.
+     */
+    static String watchdogScript(String command, int timeoutMs) {
+        long seconds = Math.max(1L, (timeoutMs + 999L) / 1000L);
+        return "exec 9<&0; { " + command + " ; } <&9 & child=$!; "
+                + "( sleep " + seconds + "; "
+                + "{ command -v pkill >/dev/null 2>&1 && pkill -9 -P \"$child\" 2>/dev/null; "
+                + "kill -9 \"$child\" 2>/dev/null; }; "
+                + "echo " + WATCHDOG_MARKER + " >&2 ) & wd=$!; "
+                + "wait \"$child\"; rc=$?; kill \"$wd\" 2>/dev/null; exit \"$rc\"";
+    }
+
+    private static int saturatedAdd(int value, int extra) {
+        long sum = (long) value + extra;
+        return sum > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) sum;
     }
 
     /**
@@ -159,16 +186,17 @@ public final class SuShell {
 
     private static ExecResult runRaw(List<String> argv, String display, int timeoutMs, String stdin,
                                      Consumer<String> onLine, AtomicBoolean cancelled,
-                                     boolean mergeError) {
+                                     boolean mergeError, boolean expectWatchdogMarker) {
         long started = System.nanoTime();
         Process process = null;
         Collector out = null;
         Collector err = null;
+        AtomicBoolean watchdogFired = new AtomicBoolean(false);
         try {
             ProcessBuilder builder = new ProcessBuilder(argv);
             process = builder.start();
-            out = new Collector(process.getInputStream(), mergeError ? onLine : null);
-            err = new Collector(process.getErrorStream(), mergeError ? onLine : null);
+            out = new Collector(process.getInputStream(), mergeError ? onLine : null, watchdogFired);
+            err = new Collector(process.getErrorStream(), mergeError ? onLine : null, watchdogFired);
             out.start();
             err.start();
             writeStdin(process.getOutputStream(), stdin);
@@ -202,6 +230,8 @@ public final class SuShell {
                     }
                 }
                 if (timedOut || wasCancelled) {
+                    // Fallback only: the App cannot kill a root child, so this succeeds only if
+                    // the root-side watchdog already made the shell exit.
                     process.destroyForcibly();
                     try {
                         process.waitFor(2, TimeUnit.SECONDS);
@@ -214,7 +244,9 @@ public final class SuShell {
             out.awaitDone();
             err.awaitDone();
             long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
-            return new ExecResult(display, exit, out.text(), err.text(), timedOut, elapsed);
+            boolean killedByWatchdog = expectWatchdogMarker && watchdogFired.get();
+            return new ExecResult(display, exit, out.text(), err.text(),
+                    timedOut || killedByWatchdog, elapsed);
         } catch (IOException e) {
             return ExecResult.failure(display, "cannot start root shell " + argv.get(0) + ": " + e.getMessage());
         } catch (InterruptedException e) {
@@ -248,13 +280,15 @@ public final class SuShell {
     private static final class Collector extends Thread {
         private final InputStream in;
         private final Consumer<String> lineSink;
+        private final AtomicBoolean watchdogFired;
         private final StringBuilder text = new StringBuilder();
         private final Object textLock = new Object();
         private volatile boolean done;
 
-        Collector(InputStream in, Consumer<String> lineSink) {
+        Collector(InputStream in, Consumer<String> lineSink, AtomicBoolean watchdogFired) {
             this.in = in;
             this.lineSink = lineSink;
+            this.watchdogFired = watchdogFired;
             setDaemon(true);
             setName("container-output");
         }
@@ -265,6 +299,10 @@ public final class SuShell {
                     new InputStreamReader(in, StandardCharsets.UTF_8), 8192)) {
                 String line;
                 while ((line = reader.readLine()) != null) {
+                    if (line.contains(WATCHDOG_MARKER)) {
+                        watchdogFired.set(true);
+                        continue;
+                    }
                     synchronized (textLock) {
                         text.append(line).append('\n');
                         if (text.length() > OUTPUT_CAP) text.delete(0, text.length() - OUTPUT_CAP);

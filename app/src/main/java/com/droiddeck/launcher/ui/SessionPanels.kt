@@ -121,8 +121,8 @@ class SessionTerminalPanel(context: Context) : LinearLayout(context) {
             (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
                 .hideSoftInputFromWindow(view.windowToken, 0)
         }
-        val pid = terminalPid.takeIf { it > 1 } ?: (terminalSession?.pid ?: -1)
-        if (pid > 1) SessionService.stopTerminalProcess(context, pid)
+        runCatching { terminalSession?.finishIfRunning() }
+        SessionService.stopTerminalShell(context)
         terminalPid = -1
         terminalSession = null
         terminalView = null

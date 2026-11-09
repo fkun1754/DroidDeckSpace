@@ -1,6 +1,7 @@
 package com.droiddeck.launcher.runtime.container;
 
 import android.content.Context;
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -8,6 +9,7 @@ import java.util.List;
 
 /** Guest process control through droiddeck-container-ctl over {@code droidspaces run}. */
 public final class ContainerControl {
+    private static final String TAG = "DroidDeckContainer";
     private static final int DEFAULT_TIMEOUT_MS = 20_000;
 
     public static final int SIGHUP = 1;
@@ -51,6 +53,23 @@ public final class ContainerControl {
         argv.add("kill");
         for (int pid : pids) argv.add(Integer.toString(pid));
         ctl(context, DEFAULT_TIMEOUT_MS, argv.toArray(new String[0]));
+    }
+
+    /** Best-effort signal for cancellation paths: never throws, returns false on failure. */
+    public static boolean signalQuietly(Context context, int signal, int pid) {
+        if (pid <= 1) return false;
+        try {
+            signal(context, signal, pid);
+            return true;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "could not signal guest pid " + pid + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    /** Best-effort SIGKILL by guest pid, used when a host-side su cannot be killed. */
+    public static boolean killQuietly(Context context, int pid) {
+        return signalQuietly(context, SIGKILL, pid);
     }
 
     public static void freeze(Context context) {

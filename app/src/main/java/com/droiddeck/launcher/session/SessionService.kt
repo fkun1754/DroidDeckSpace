@@ -209,6 +209,8 @@ class SessionService : Service() {
                         } else false
                     }
                     if (!tracked) Thread({ teardown(pid, started) }, "auxiliary-stop-$pid").start()
+                } else if (pid > 1) {
+                    Log.i(TAG, "auxiliary $pid is a container-side process; it is stopped with the container")
                 }
                 return START_NOT_STICKY
             }
@@ -216,7 +218,12 @@ class SessionService : Service() {
                 val pid = intent.getIntExtra(EXTRA_AUXILIARY_PID, -1)
                 if (pid > 1) {
                     val started = synchronized(auxiliaryProcessesLock) { auxiliaryProcesses.remove(pid) } ?: readStat(pid)?.second
-                    if (started != null) Thread({ teardown(pid, started) }, "auxiliary-stop-$pid").start()
+                    if (started != null) {
+                        Thread({ teardown(pid, started) }, "auxiliary-stop-$pid").start()
+                    } else {
+                        // The pid is the root su wrapper; the guest process is only reachable by name.
+                        killGuestByMarker(BottomDesktop.SCRIPT)
+                    }
                 }
                 return START_NOT_STICKY
             }
@@ -229,6 +236,10 @@ class SessionService : Service() {
             ACTION_STOP -> {
                 Log.i(TAG, "stop requested from the notification")
                 stopSession(0)
+                return START_NOT_STICKY
+            }
+            ACTION_STOP_TERMINAL -> {
+                stopTerminalShell()
                 return START_NOT_STICKY
             }
             ACTION_PIP_BEGIN -> {
@@ -730,7 +741,15 @@ class SessionService : Service() {
         for (attempt in 0 until 3) {
             pid = runCatching { session.pid(this) }.getOrDefault(-1)
             if (pid > 1) break
-            try { Thread.sleep(300) } catch (e: InterruptedException) { return }
+            try {
+                Thread.sleep(300)
+            } catch (e: InterruptedException) {
+                Log.w(TAG, "session start interrupted while reading the container pid; stopping it")
+                runCatching { session.stop(this) }
+                SessionEvents.record("container.stop_after_interrupt", mapOf("name" to session.name()))
+                stopSession(-1, gen)
+                return
+            }
         }
         Log.i(TAG, "container session ${session.name()} pid $pid, log ${sessionLog.path}")
         if (gen != sessionGen || !SessionState.running) {
@@ -1258,14 +1277,24 @@ class SessionService : Service() {
         return binds
     }
 
-    /** Stops a host-side helper process the service started (terminal/desktop), not the container. */
+    /**
+     * Stops a host-side helper process the service started (terminal/desktop), not the container.
+     * In container mode these helpers are root `su` wrappers: the app uid cannot read their /proc
+     * entry or signal them, so this is a best-effort no-op and the guest process is stopped through
+     * the container control script / the container stop instead.
+     */
     private fun teardown(helperPid: Int, expectedStartTime: Long? = null) {
         fun stillSameProcess(): Boolean = expectedStartTime == null || readStat(helperPid)?.second == expectedStartTime
-        if (!stillSameProcess()) return
+        if (!stillSameProcess()) {
+            if (readStat(helperPid) == null) {
+                Log.i(TAG, "helper $helperPid is a container-side process; it is stopped with the container")
+            }
+            return
+        }
         val tree = descendants(helperPid)
         if (!stillSameProcess()) return
         saveWineRegistries(tree)
-        android.os.Process.sendSignal(helperPid, 15)
+        runCatching { android.os.Process.sendSignal(helperPid, 15) }
         if (!waitForExit(helperPid, GRACE_MS)) {
             if (!stillSameProcess()) return
             Log.w(TAG, "helper $helperPid did not exit on SIGTERM; killing it")
@@ -1408,10 +1437,21 @@ class SessionService : Service() {
     }
 
     private fun stopContainerSession(session: ContainerSession) {
-        runCatching { session.stop(this) }
+        var stopped = runCatching { session.stop(this) }
             .onFailure { Log.w(TAG, "could not stop the container", it) }
-        if (!waitForContainerExit(session, CONTAINER_STOP_MS)) {
-            Log.w(TAG, "container ${session.name()} did not report itself stopped")
+            .isSuccess
+        if (!stopped || !waitForContainerExit(session, CONTAINER_STOP_MS)) {
+            Log.w(TAG, "container ${session.name()} did not stop; retrying once")
+            runCatching { ContainerRuntime.stop(this) }
+                .onFailure { Log.w(TAG, "could not stop the container runtime", it) }
+            stopped = waitForContainerExit(session, CONTAINER_STOP_MS)
+        }
+        if (!stopped) {
+            Log.e(TAG, "container ${session.name()} is still running after stop; the next session will replace it")
+            SessionEvents.record("container.stop_failed", mapOf("name" to session.name()))
+            runCatching {
+                SessionState.logFile?.appendText("== container ${session.name()} did not stop; it will be replaced by the next session\n")
+            }
         }
     }
 
@@ -1545,9 +1585,59 @@ class SessionService : Service() {
         File(directory, STEAM_GAME_REQUEST + ".tmp").delete()
     }
 
+    private fun killGuestByMarker(marker: String) {
+        if (!ContainerRuntime.isRunning(this)) return
+        val victims = runCatching { ContainerControl.ps(this) }.getOrNull().orEmpty()
+            .filter { it.pid > 1 && (it.args.contains(marker) || it.comm.contains(marker)) }
+        if (victims.isEmpty()) return
+        val killed = victims.count { ContainerControl.killQuietly(this, it.pid) }
+        Log.i(TAG, "stopped $killed of ${victims.size} container guest(s) matching $marker")
+    }
+
+    /** Stops the container-side shell of the in-app terminal (the host `su` pid is not signalable). */
+    private fun stopTerminalShell() {
+        val file = File(LinuxRuntime.sessionRoot(this), "terminal.pid")
+        val pid = runCatching { file.readText().trim().toInt() }.getOrNull()
+        file.delete()
+        if (pid == null || pid <= 1) return
+        if (!ContainerRuntime.isRunning(this)) return
+        killGuestTree(pid)
+    }
+
+    private fun killGuestTree(rootPid: Int) {
+        val processes = runCatching { ContainerControl.ps(this) }.getOrNull() ?: return
+        val children = processes.groupBy { it.ppid }
+        val victims = ArrayList<Int>()
+        val queue = ArrayDeque<Int>().apply { add(rootPid) }
+        while (queue.isNotEmpty()) {
+            for (child in children[queue.removeFirst()].orEmpty()) {
+                if (child.pid <= 1 || child.pid in victims) continue
+                victims.add(child.pid)
+                queue.add(child.pid)
+            }
+        }
+        victims.add(rootPid)
+        Log.i(TAG, "stopping the terminal shell in the container (guest pid $rootPid)")
+        val killed = victims.count { ContainerControl.killQuietly(this, it) }
+        if (killed < victims.size) Log.w(TAG, "stopped $killed of ${victims.size} terminal shell processes")
+        val deadline = System.currentTimeMillis() + 2_000
+        while (System.currentTimeMillis() < deadline) {
+            val alive = runCatching { ContainerControl.ps(this) }.getOrNull()?.any { it.pid in victims } ?: false
+            if (!alive) return
+            try { Thread.sleep(100) } catch (e: InterruptedException) { return }
+        }
+        Log.w(TAG, "terminal shell processes $victims are still present after kill")
+    }
+
     private fun killStragglers() {
         // Guest processes live in the container's PID namespace; ContainerRuntime.start() stops a
-        // residual container of the same name before starting the new one.
+        // residual container of the same name before starting the new one. A maintenance container
+        // means an install is using it right now: leave it alone here (the session start still
+        // replaces it, see notes/impl-session-wiring.md).
+        if (ContainerRuntime.isMaintenance(this)) {
+            Log.i(TAG, "a maintenance container is running (an install is in progress); not stopping it here")
+            return
+        }
         runCatching { ContainerRuntime.stop(this) }
             .onFailure { Log.w(TAG, "could not stop a residual container", it) }
     }
@@ -1970,6 +2060,7 @@ class SessionService : Service() {
         val auxiliary = synchronized(auxiliaryProcessesLock) {
             auxiliaryProcesses.toMap().also { auxiliaryProcesses.clear() }
         }
+        stopTerminalShell()
         SessionTerminal.clear(sessionGen)
         BottomDesktop.stop(this, stoppedGen)
         val controller = suspendController
@@ -2395,7 +2486,7 @@ class SessionService : Service() {
     companion object {
         private const val TAG = "SessionService"
         private const val CONTAINER_POLL_MS = 1_000L
-        private const val CONTAINER_STOP_MS = 15_000L
+        private const val CONTAINER_STOP_MS = 35_000L
         private const val FREEZE_TIMEOUT_MS = 8_000L
         private const val RESUME_TIMEOUT_MS = 5_000L
         private const val CTL_COMMAND = "droiddeck-container-ctl"
@@ -2420,6 +2511,7 @@ class SessionService : Service() {
         const val ACTION_LAUNCH_GAME = "com.droiddeck.launcher.LAUNCH_STEAM_GAME"
         const val ACTION_HOME_GUIDE = "com.droiddeck.launcher.HOME_GUIDE"
         const val ACTION_AGENT_START = "com.droiddeck.launcher.AGENT_START"
+        private const val ACTION_STOP_TERMINAL = "com.droiddeck.launcher.STOP_TERMINAL"
         private const val ACTION_MIC_CHANGED = "com.droiddeck.launcher.MIC_CHANGED"
         private const val ACTION_SUSPEND_POLICY_CHANGED = "com.droiddeck.launcher.SUSPEND_POLICY_CHANGED"
         private const val ACTION_ACTIVITY_VISIBLE = "com.droiddeck.launcher.ACTIVITY_VISIBLE"
@@ -2563,6 +2655,11 @@ class SessionService : Service() {
         fun suspendPolicyChanged(context: Context) {
             if (!SessionState.running) return
             context.startService(Intent(context, SessionService::class.java).setAction(ACTION_SUSPEND_POLICY_CHANGED))
+        }
+
+        fun stopTerminalShell(context: Context) {
+            if (!SessionState.running) return
+            context.startService(Intent(context, SessionService::class.java).setAction(ACTION_STOP_TERMINAL))
         }
 
         fun stopTerminalProcess(context: Context, pid: Int) {

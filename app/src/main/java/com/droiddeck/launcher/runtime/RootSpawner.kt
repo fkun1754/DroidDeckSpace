@@ -117,6 +117,10 @@ object RootSpawner {
             if (!cancelled.get()) {
                 Log.i(TAG, "root $id: its caller is gone; stopping it")
                 cancelled.set(true)
+                // The app uid cannot signal the root su/droidspaces client, so stop the guest
+                // command through the container control script instead.
+                val pid = guestPid.get()
+                if (pid > 1) GuestCommand.killGuestProcess(context, pid)
             }
         }, "root-$id-watch").apply { isDaemon = true; start() }
         try {

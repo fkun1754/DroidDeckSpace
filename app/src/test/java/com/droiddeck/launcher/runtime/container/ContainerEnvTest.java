@@ -90,6 +90,27 @@ public class ContainerEnvTest {
     }
 
     @Test
+    public void driverPackIdAcceptsEveryBlVkDriverShape() {
+        String host = APP + "/linux_vulkan_drivers/Mesa_Turnip_v27.0.0-20261104-r3-Linux/icd.json";
+        Assert.assertEquals("Mesa_Turnip_v27.0.0-20261104-r3-Linux",
+                ContainerEnv.driverPackId(host));
+        Assert.assertEquals("turnip26.3.0-a6xx",
+                ContainerEnv.driverPackId("/dd/linux_vulkan_drivers/turnip26.3.0-a6xx/icd.json"));
+        Assert.assertEquals("turnip26.3.0-a6xx",
+                ContainerEnv.driverPackId(APP + "/linux_vulkan_drivers/turnip26.3.0-a6xx/icd.json"));
+        Assert.assertEquals("turnip26.3.0-a6xx",
+                ContainerEnv.driverPackId("turnip26.3.0-a6xx"));
+        Assert.assertEquals("turnip25.1.0",
+                ContainerEnv.driverPackId("turnip25.1.0/"));
+        Assert.assertEquals("legacy-pack",
+                ContainerEnv.driverPackId("/some/where/legacy-pack/icd.json"));
+        Assert.assertNull(ContainerEnv.driverPackId(null));
+        Assert.assertNull(ContainerEnv.driverPackId(""));
+        Assert.assertNull(ContainerEnv.driverPackId("icd.json"));
+        Assert.assertNull(ContainerEnv.driverPackId("/dd/linux_vulkan_drivers/../icd.json"));
+    }
+
+    @Test
     public void bindDestinationIsParsedAndDeduplicated() {
         Assert.assertEquals("/dd", ContainerEnv.destinationOf("/data/files:/dd"));
         Assert.assertEquals("/dev/shm", ContainerEnv.destinationOf("/data/shm:/dev/shm"));

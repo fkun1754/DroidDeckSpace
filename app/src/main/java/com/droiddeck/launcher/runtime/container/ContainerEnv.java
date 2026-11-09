@@ -88,6 +88,9 @@ public final class ContainerEnv {
         if (icd != null) {
             env.put("VK_ICD_FILENAMES", ContainerPaths.GUEST_ICD);
             env.put("VK_DRIVER_FILES", ContainerPaths.GUEST_ICD);
+            // droiddeck-session reads BL_VK_DRIVER as the manifest path and seds its library_path;
+            // the selected pack's own manifest carries a host library_path the guest cannot read.
+            env.put("BL_VK_DRIVER", ContainerPaths.GUEST_ICD);
         } else {
             mirrorLoaderName(env, "VK_ICD_FILENAMES", "VK_DRIVER_FILES", paths);
         }
@@ -553,10 +556,10 @@ public final class ContainerEnv {
     private static Icd selectIcd(Context context, Map<String, String> env, Paths paths) {
         File files = ContainerPaths.filesDir(context);
         File linuxRoot = new File(files, LINUX_DRIVERS);
-        String selected = env.get("BL_VK_DRIVER");
-        if (selected != null && !selected.isEmpty()) {
-            Icd icd = packIcd(new File(linuxRoot, selected), ContainerPaths.GUEST_APP + "/"
-                    + LINUX_DRIVERS + "/" + selected);
+        String packId = driverPackId(env.get("BL_VK_DRIVER"));
+        if (packId != null) {
+            Icd icd = packIcd(new File(linuxRoot, packId), ContainerPaths.GUEST_APP + "/"
+                    + LINUX_DRIVERS + "/" + packId);
             if (icd != null) return icd;
         }
         if (hasRootfsIcd(context)) return null;
@@ -575,6 +578,38 @@ public final class ContainerEnv {
         File[] manifests = new File(ContainerPaths.rootfs(context), "usr/share/vulkan/icd.d")
                 .listFiles((dir, name) -> name.endsWith(".json"));
         return manifests != null && manifests.length > 0;
+    }
+
+    /**
+     * The selected driver reaches us in different shapes: the pack id ("turnip26.3.0-a6xx"), a
+     * host absolute icd.json path, or the already container-view "/dd/linux_vulkan_drivers/<id>/icd.json".
+     * Return the pack directory name in all three cases.
+     */
+    static String driverPackId(String value) {
+        if (value == null) return null;
+        String path = value.trim().replace('\\', '/');
+        if (path.isEmpty()) return null;
+        String marker = "/" + LINUX_DRIVERS + "/";
+        int at = path.indexOf(marker);
+        if (at >= 0) {
+            String rest = path.substring(at + marker.length());
+            int slash = rest.indexOf('/');
+            return validPackId(slash < 0 ? rest : rest.substring(0, slash));
+        }
+        if (path.endsWith(".json")) {
+            int slash = path.lastIndexOf('/');
+            if (slash <= 0) return null;
+            int parentSlash = path.lastIndexOf('/', slash - 1);
+            return validPackId(path.substring(parentSlash + 1, slash));
+        }
+        while (path.endsWith("/")) path = path.substring(0, path.length() - 1);
+        return validPackId(path);
+    }
+
+    private static String validPackId(String id) {
+        if (id == null || id.isEmpty()) return null;
+        if (".".equals(id) || "..".equals(id) || id.contains("/")) return null;
+        return id;
     }
 
     private static Icd packIcd(File pack, String containerDir) {

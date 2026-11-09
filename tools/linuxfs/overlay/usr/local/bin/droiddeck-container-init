@@ -63,14 +63,25 @@ clear_stale_session_files() {
 # so the app's fake drm/input sysfs entries need a writable overlay over the real one.
 prepare_fake_sysfs() {
   [ -f /dd/container/sysfs-binds ] || return 0
+  mkdir -p /tmp/droiddeck-sys 2>/dev/null || warn "cannot create /tmp/droiddeck-sys"
   mount -t tmpfs none /tmp/droiddeck-sys 2>/dev/null || warn "cannot mount the fake sysfs tmpfs"
   mkdir -p /tmp/droiddeck-sys/upper /tmp/droiddeck-sys/work 2>/dev/null || true
   mount -t overlay overlay -o lowerdir=/sys,upperdir=/tmp/droiddeck-sys/upper,workdir=/tmp/droiddeck-sys/work /sys 2>/dev/null ||
     warn "cannot overlay /sys: fake sysfs entries will be missing"
   while IFS='|' read -r _dd_src _dd_dst; do
     [ -n "$_dd_src" ] && [ -n "$_dd_dst" ] || continue
-    mkdir -p "$_dd_dst" 2>/dev/null || { warn "cannot create $_dd_dst"; continue; }
-    mount --bind "$_dd_src" "$_dd_dst" 2>/dev/null || warn "cannot bind $_dd_src to $_dd_dst"
+    if [ -e "$_dd_dst" ]; then
+      # Real sysfs nodes (thermal zones, cpufreq files) already exist; the kernel refuses a
+      # directory here, so only the entries the kernel lacks are created in the overlay.
+      mount --bind "$_dd_src" "$_dd_dst" 2>/dev/null || warn "cannot bind $_dd_src to $_dd_dst"
+    elif [ -d "$_dd_src" ]; then
+      mkdir -p "$_dd_dst" 2>/dev/null || { warn "cannot create $_dd_dst"; continue; }
+      mount --bind "$_dd_src" "$_dd_dst" 2>/dev/null || warn "cannot bind $_dd_src to $_dd_dst"
+    else
+      mkdir -p "$(dirname "$_dd_dst")" 2>/dev/null || { warn "cannot create $(dirname "$_dd_dst")"; continue; }
+      : > "$_dd_dst" 2>/dev/null || true
+      mount --bind "$_dd_src" "$_dd_dst" 2>/dev/null || warn "cannot bind $_dd_src to $_dd_dst"
+    fi
   done < /dd/container/sysfs-binds
 }
 
@@ -99,13 +110,17 @@ export PATH
 mkdir -p /run/droiddeck /run/droiddeck-hud /run/dbus /tmp 2>/dev/null ||
   die "cannot create the guest runtime directories"
 chmod 1777 /tmp 2>/dev/null || true
-for dir in /run/droiddeck-hud /run/droiddeck-hud/frames; do
+# The session runs as the app uid and creates the Wayland socket, the dbus socket and the HUD
+# output there; /run itself stays root-owned. /run/droiddeck-hud/frames is a FIFO the app
+# creates on the host side and bind-mounts here, so it must not be created as a directory.
+for dir in /run/droiddeck /run/droiddeck-hud /run/dbus; do
   mkdir -p "$dir" 2>/dev/null || true
   if [ -d "$dir" ]; then
     chown "$DD_UID:$DD_GID" "$dir" 2>/dev/null || log "cannot chown $dir to $DD_UID:$DD_GID"
-    chmod 0770 "$dir" 2>/dev/null || true
   fi
 done
+chmod 0770 /run/droiddeck-hud 2>/dev/null || true
+chmod 0755 /run/dbus 2>/dev/null || true
 
 ensure_machine_id
 clear_stale_session_files

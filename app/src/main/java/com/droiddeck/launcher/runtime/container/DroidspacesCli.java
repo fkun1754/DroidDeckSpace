@@ -53,6 +53,7 @@ public final class DroidspacesCli {
         argv.add(spec.name());
         argv.add("-r");
         argv.add(spec.rootfs().getPath());
+        argv.add("--hostname=" + spec.hostname());
         argv.add("--init=" + spec.init());
         if (spec.netHost()) argv.add("--net=host");
         if (spec.gpu()) argv.add("--gpu");
@@ -204,6 +205,7 @@ public final class DroidspacesCli {
         private final String name;
         private final File rootfs;
         private final String init;
+        private final String hostname;
         private final List<String> binds;
         private final boolean netHost;
         private final boolean gpu;
@@ -212,6 +214,7 @@ public final class DroidspacesCli {
             this.name = builder.name;
             this.rootfs = builder.rootfs;
             this.init = builder.init;
+            this.hostname = builder.hostname;
             this.binds = builder.binds;
             this.netHost = builder.netHost;
             this.gpu = builder.gpu;
@@ -233,6 +236,10 @@ public final class DroidspacesCli {
             return init;
         }
 
+        public String hostname() {
+            return hostname;
+        }
+
         public List<String> binds() {
             return binds;
         }
@@ -249,6 +256,9 @@ public final class DroidspacesCli {
             private final String name;
             private final File rootfs;
             private String init = ContainerPaths.GUEST_INIT;
+            // A fresh config is written on every start, but never let an old config's hostname
+            // (e.g. from an earlier experiment) survive a restart.
+            private String hostname = "droiddeck";
             private List<String> binds = new ArrayList<>();
             private boolean netHost = true;
             private boolean gpu = true;
@@ -260,6 +270,11 @@ public final class DroidspacesCli {
 
             public Builder init(String value) {
                 init = value;
+                return this;
+            }
+
+            public Builder hostname(String value) {
+                hostname = value;
                 return this;
             }
 

@@ -15,8 +15,11 @@ public final class ContainerRuntime {
     private static final String TAG = "DroidDeckContainer";
     public static final int READY_TIMEOUT_MS = 90_000;
     public static final int READY_MARKER_GRACE_MS = 20_000;
+    /** A stop waits for droidspaces' own SIGTERM/SIGKILL dance plus process teardown. */
+    public static final int STOP_TIMEOUT_MS = 30_000;
     private static final int READY_POLL_MS = 500;
-    private static final int STOP_TIMEOUT_MS = 30_000;
+    private static final int STATE_CONFIRM_ATTEMPTS = 3;
+    private static final int STATE_CONFIRM_DELAY_MS = 300;
     private static final Object START_LOCK = new Object();
 
     private static volatile Boolean available;
@@ -86,6 +89,7 @@ public final class ContainerRuntime {
                     Log.w(TAG, "previous container could not be stopped", e);
                 }
             }
+            cleanStaleContainerConfig(context, name);
             DroidspacesCli.ContainerSpec cliSpec = DroidspacesCli.ContainerSpec
                     .builder(name, ContainerPaths.rootfs(context))
                     .init(ContainerPaths.GUEST_INIT)
@@ -170,24 +174,129 @@ public final class ContainerRuntime {
         }
     }
 
+    /**
+     * Reuses a running container (session or maintenance) and only starts one when the state is
+     * confirmed STOPPED. It never replaces a running container: a one-shot command that lands
+     * while a game session runs must not stop it.
+     */
     public static ContainerSession ensureRunning(Context context, SessionSpec session) {
         if (!isAvailable(context)) throw new IllegalStateException(unavailableMessage(context));
-        if (isRunning(context)) {
-            return new ContainerSession(ContainerPaths.CONTAINER_NAME,
-                    session == null ? "" : session.sessionId());
+        SessionSpec spec = session == null ? maintenanceSpec() : session;
+        synchronized (START_LOCK) {
+            String state = confirmedState();
+            if (DroidspacesCli.RUNNING.equals(state)) {
+                return new ContainerSession(ContainerPaths.CONTAINER_NAME, spec.sessionId());
+            }
+            if (!DroidspacesCli.STOPPED.equals(state)) {
+                throw new IllegalStateException("cannot confirm the state of container '"
+                        + ContainerPaths.CONTAINER_NAME + "' (state=" + state + ")\n"
+                        + diagnostics(context, ContainerPaths.CONTAINER_NAME));
+            }
+            return startWithoutReplacing(context, spec);
         }
-        return start(context, session);
     }
 
     /** Keeps a container alive for one-shot commands while no session runs (DD_MODE=service). */
     public static ContainerSession startMaintenance(Context context) {
-        SessionSpec spec = SessionSpec.builder()
+        return ensureRunning(context, maintenanceSpec());
+    }
+
+    /**
+     * Stops a leftover maintenance container (DD_MODE=service) when the App has no active session.
+     * Callers must only use it when no session is running; a session container is left alone.
+     */
+    public static boolean stopIfIdle(Context context) {
+        if (!isAvailable(context)) return false;
+        if (!isRunning(context)) return false;
+        if (!isMaintenance(context)) {
+            Log.i(TAG, "not stopping the running session container");
+            return false;
+        }
+        try {
+            stop(context);
+            return true;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "could not stop the idle maintenance container", e);
+            return false;
+        }
+    }
+
+    /** The last prepared session.env says DD_MODE=service: the container only serves one-shots. */
+    public static boolean isMaintenance(Context context) {
+        File env = ContainerPaths.sessionEnv(context);
+        try {
+            String mode = envValue(new String(java.nio.file.Files.readAllBytes(env.toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8), "DD_MODE");
+            return SessionSpec.MODE_SERVICE.equals(mode);
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Reads a {@code KEY='value'} line from a session manifest. */
+    static String envValue(String manifest, String key) {
+        if (manifest == null || key == null) return null;
+        String prefix = key + "=";
+        for (String line : manifest.split("\n")) {
+            String trimmed = line.trim();
+            if (!trimmed.startsWith(prefix)) continue;
+            String value = trimmed.substring(prefix.length()).trim();
+            if (value.length() >= 2 && value.startsWith("'") && value.endsWith("'")) {
+                value = value.substring(1, value.length() - 1).replace("'\\''", "'");
+            }
+            return value;
+        }
+        return null;
+    }
+
+    private static SessionSpec maintenanceSpec() {
+        return SessionSpec.builder()
                 .mode(SessionSpec.MODE_SERVICE)
                 .sessionId("service")
                 .uid(Process.myUid())
                 .gid(Process.myUid())
                 .build();
-        return ensureRunning(context, spec);
+    }
+
+    private static String confirmedState() {
+        String state = DroidspacesCli.state(ContainerPaths.CONTAINER_NAME);
+        for (int attempt = 1; attempt < STATE_CONFIRM_ATTEMPTS && state == null; attempt++) {
+            sleep(STATE_CONFIRM_DELAY_MS);
+            state = DroidspacesCli.state(ContainerPaths.CONTAINER_NAME);
+        }
+        return state;
+    }
+
+    /** Maintenance start: a reported name conflict means the container is already running. */
+    private static ContainerSession startWithoutReplacing(Context context, SessionSpec spec) {
+        String name = ContainerPaths.CONTAINER_NAME;
+        prepare(context, spec);
+        List<String> binds = ContainerEnv.binds(context, spec);
+        cleanStaleContainerConfig(context, name);
+        DroidspacesCli.ContainerSpec cliSpec = DroidspacesCli.ContainerSpec
+                .builder(name, ContainerPaths.rootfs(context))
+                .init(ContainerPaths.GUEST_INIT)
+                .binds(binds)
+                .build();
+        ExecResult result = DroidspacesCli.start(cliSpec);
+        if (!result.ok()) {
+            if (looksLikeNameConflict(result) || isRunning(context)) {
+                return new ContainerSession(name, spec.sessionId());
+            }
+            throw new IllegalStateException("cannot start container '" + name + "'\n"
+                    + result.describe() + "\n" + diagnostics(context, name));
+        }
+        try {
+            awaitReady(context, name);
+        } catch (RuntimeException failure) {
+            try {
+                DroidspacesCli.stop(name);
+            } catch (RuntimeException ignored) {
+                // Diagnostics are already in the failure.
+            }
+            throw failure;
+        }
+        return new ContainerSession(name, spec.sessionId());
     }
 
     public static ExecResult exec(Context context, List<String> argv, int timeoutMs) {
@@ -227,6 +336,22 @@ public final class ContainerRuntime {
             out.append("diagnostics unavailable: ").append(e.getMessage());
         }
         return out.toString();
+    }
+
+    /**
+     * DroidSpaces persists the first start's flags in Containers/<name>/container.config and later
+     * starts merge over them. A stale config from an earlier experiment kept binds and a hostname
+     * the CLI arguments do not set, so every start recreates it from the CLI flags. Logs/ and
+     * Pids/ are left alone: the monitor needs them.
+     */
+    private static void cleanStaleContainerConfig(Context context, String name) {
+        if (DroidspacesCli.RUNNING.equals(DroidspacesCli.state(name))) return;
+        File configDir = new File(ContainerPaths.WORKSPACE + "/Containers", name);
+        ExecResult result = SuShell.exec("rm -rf " + SuShell.quote(configDir.getPath()), 15_000);
+        if (!result.ok()) {
+            Log.w(TAG, "could not clear the stale container config " + configDir + ": "
+                    + result.stderrTail(200));
+        }
     }
 
     private static void stopContainer(Context context, String name) {

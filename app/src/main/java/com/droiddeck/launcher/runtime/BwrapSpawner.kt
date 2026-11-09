@@ -14,6 +14,7 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import com.droiddeck.launcher.runtime.container.ContainerControl
 import com.droiddeck.launcher.runtime.container.ContainerPaths
 import com.droiddeck.launcher.runtime.container.DroidspacesCli
 import java.util.concurrent.atomic.AtomicBoolean
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 object BwrapSpawner {
     private const val TAG = "BwrapSpawner"
+    private const val PID_MARKER = "DROIDDECK_BWRAP_PID"
     fun socket(context: Context): String = "${context.packageName}.bwrap"
     private val seq = AtomicInteger()
     @Volatile private var server: LocalServerSocket? = null
@@ -353,8 +355,10 @@ object BwrapSpawner {
         // of dropping the sandbox: the container has root and user namespaces, but the guest-side
         // droiddeck-bwrap shim is still a proot-era emulation. Until then the command runs in the
         // session's own container with the environment the sandbox asked for.
-        val command = GuestCommand.containerArgv(plan.envTool, plan.env, plan.cwd, plan.argv)
+        val exec = GuestCommand.containerArgv(plan.envTool, plan.env, plan.cwd, plan.argv)
+        val script = "echo $PID_MARKER:\$\$; exec " + exec.joinToString(" ") { LinuxRuntime.shellQuote(it) }
         val cancelled = AtomicBoolean(false)
+        val guestPid = AtomicInteger(-1)
         val verbose = plan.env["DROIDDECK_PROOT_VERBOSE"]?.toIntOrNull()
         Log.i(TAG, "sandbox $id: ${plan.argv.joinToString(" ")} (container exec, ${plan.binds.size} binds dropped)")
         runCatching { synchronized(out) { frame(out, 'P', "0".toByteArray()) } }
@@ -364,13 +368,19 @@ object BwrapSpawner {
             if (!cancelled.get()) {
                 Log.i(TAG, "sandbox $id: its bwrap is gone; stopping it")
                 cancelled.set(true)
+                val pid = guestPid.get()
+                if (pid > 1) GuestCommand.killGuestProcess(context, pid)
             }
         }, "bwrap-$id-watch").apply { isDaemon = true; start() }
         try {
             GuestCommand.ensureContainer(context)
             val result = DroidspacesCli.execUnlimited(context, ContainerPaths.CONTAINER_NAME, Process.myUid(),
-                command,
+                listOf("/bin/sh", "-c", script),
                 { line ->
+                    if (guestPid.get() <= 0 && line.startsWith("$PID_MARKER:")) {
+                        line.removePrefix("$PID_MARKER:").trim().toIntOrNull()?.takeIf { it > 1 }?.let { guestPid.set(it) }
+                        return@execUnlimited
+                    }
                     if (verbose != null) Log.i(TAG, "sandbox $id: $line")
                     runCatching { synchronized(out) { frame(out, 'O', (line + "\n").toByteArray()) } }
                 }, cancelled)
