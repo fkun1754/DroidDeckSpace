@@ -1,4 +1,7 @@
 {
+  "schema": 1,
+  "sourceRepo": "fkun1754/DroidDeckSpace",
+  "ciRepo": "fkun1754/DroidDeckSpace",
   "stable": {
     "tag": "0.7.0",
     "title": "DroidDeckSpace 0.7.0",
