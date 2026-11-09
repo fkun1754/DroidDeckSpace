@@ -337,7 +337,8 @@ JAVA_HOME=/opt/jdk21/current ./gradlew :app:compileDebugKotlin --no-daemon -Pski
 首跑需联网下载 Gradle 与依赖，之后缓存在 `~/.gradle`）。
 **同一时间只跑一个 Gradle 构建**：容器只有 14 GB 内存而项目 `gradle.properties` 钉死 4 GB
 Gradle 堆，并发构建曾 OOM 掉 Kotlin 编译。纯 JVM 单测用同样参数加
-`:app:testDebugUnitTest --tests "com.droiddeck.launcher.runtime.container.*"`。
+`:app:testDebugUnitTest --tests "com.droiddeck.launcher.runtime.container.*"`，实测 19 个测试全部通过
+（首跑需下载 junit/robolectric，约 3 分钟）。
 
 ## 8. Open items / later phases
 
