@@ -1,0 +1,28 @@
+{
+  "stable": {
+    "tag": "0.7.0",
+    "title": "DroidDeckSpace 0.7.0",
+    "summary": "First release: runs the Linux runtime in a DroidSpaces container instead of proot.",
+    "commit": "b55b7fe5adaad82a8d810600a52ebda6c4556b68",
+    "pr": 0,
+    "version": "0.7.0",
+    "versionCode": 18,
+    "publishedAt": 1794237866263,
+    "url": "https://github.com/fkun1754/DroidDeckSpace/releases/tag/0.7.0",
+    "apks": {
+      "com.droiddeckspace.launcher": {
+        "name": "DroidDeckSpace-0.7.0.apk",
+        "url": "https://github.com/fkun1754/DroidDeckSpace/releases/download/0.7.0/DroidDeckSpace-0.7.0.apk",
+        "size": 103318975,
+        "sha256": "7a7863fcac0d746ac23c0d2cec7412d4b842e22ce490952e45df18a529d7e7b6",
+        "packageName": "com.droiddeckspace.launcher",
+        "versionCode": 18,
+        "signerSha256": "a40da80a59d170caa950cf15c18c454d47a39b26989d8b640ecd745ba71bf5dc"
+      }
+    }
+  },
+  "preview": null,
+  "tests": [],
+  "recentPreviews": [],
+  "checkedAt": 1794237866263
+}
