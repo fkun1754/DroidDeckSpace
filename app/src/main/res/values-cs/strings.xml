@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">Nechat otevřené</string>
     <string name="steamvr_recovery_restarting">Resetování grafiky a opětovné otevírání SteamVR…</string>
     <string name="steamvr_recovery_failed">DroidDeck se nepodařilo automaticky restartovat. Aplikaci úplně zavřete a pak ji znovu otevřete.</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>První spuštění stáhne Steam. Může to trvat několik minut.</item>
         <item>Ve výchozím nastavení se po opuštění aplikace Steam pozastaví; po návratu pokračuje, kde skončil.</item>
@@ -2973,7 +2973,7 @@
     <string name="storage_legend_stores">Další obchody</string>
     <string name="storage_legend_desktop">Aplikace pro plochu</string>
     <string name="storage_legend_system">Systém Linux</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">Uklidit</string>
     <string name="storage_clean_up_lede">Nic tady se nedotkne nainstalovaných her ani probíhajících stahování.</string>
     <string name="storage_nothing_to_clean">Teď není co uklidit.</string>
@@ -3157,7 +3157,7 @@
     <string name="boot_movie_tab_sound">Zvuk</string>
     <string name="boot_movie_installed">Nainstalovaná videa</string>
     <string name="boot_movie_browse">Procházet</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">Importované</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

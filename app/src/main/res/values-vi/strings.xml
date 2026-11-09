@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">Giữ mở</string>
     <string name="steamvr_recovery_restarting">Đang đặt lại đồ họa và mở lại SteamVR…</string>
     <string name="steamvr_recovery_failed">DroidDeck không thể tự khởi động lại. Hãy đóng hẳn ứng dụng rồi mở lại.</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>Lần chạy đầu tải Steam. Quá trình này có thể mất vài phút.</item>
         <item>Theo mặc định, rời khỏi ứng dụng sẽ tạm dừng Steam; nó tiếp tục từ nơi bạn dừng lại khi bạn quay lại.</item>
@@ -2886,7 +2886,7 @@
     <string name="storage_legend_stores">Cửa hàng khác</string>
     <string name="storage_legend_desktop">Ứng dụng máy tính</string>
     <string name="storage_legend_system">Hệ thống Linux</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">Dọn</string>
     <string name="storage_clean_up_lede">Không mục nào ở đây đụng vào game đã cài hay bản tải đang chạy.</string>
     <string name="storage_nothing_to_clean">Hiện không có gì để dọn.</string>
@@ -3052,7 +3052,7 @@
     <string name="boot_movie_tab_sound">Âm thanh</string>
     <string name="boot_movie_installed">Video đã cài</string>
     <string name="boot_movie_browse">Duyệt</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">Đã nhập</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">Pidä auki</string>
     <string name="steamvr_recovery_restarting">Nollataan grafiikkaa ja avataan SteamVR uudelleen…</string>
     <string name="steamvr_recovery_failed">DroidDeck ei pystynyt käynnistymään uudelleen automaattisesti. Sulje sovellus kokonaan ja avaa se sitten uudelleen.</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>Ensimmäinen käynnistys lataa Steamin. Tämä voi kestää muutaman minuutin.</item>
         <item>Oletuksena sovelluksesta poistuminen keskeyttää Steamin; se jatkuu siitä mihin jäit, kun palaat takaisin.</item>
@@ -2915,7 +2915,7 @@
     <string name="storage_legend_stores">Muut kaupat</string>
     <string name="storage_legend_desktop">Työpöytäsovellukset</string>
     <string name="storage_legend_system">Linux-järjestelmä</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">Siivoa</string>
     <string name="storage_clean_up_lede">Mikään tässä ei koske asennettuihin peleihin tai käynnissä oleviin latauksiin.</string>
     <string name="storage_nothing_to_clean">Nyt ei ole siivottavaa.</string>
@@ -3081,7 +3081,7 @@
     <string name="boot_movie_tab_sound">Ääni</string>
     <string name="boot_movie_installed">Asennetut videot</string>
     <string name="boot_movie_browse">Selaa</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">Tuotu</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

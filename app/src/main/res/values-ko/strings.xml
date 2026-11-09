@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">열어 두기</string>
     <string name="steamvr_recovery_restarting">그래픽을 초기화하고 SteamVR을 다시 여는 중…</string>
     <string name="steamvr_recovery_failed">DroidDeck을 자동으로 다시 시작하지 못했습니다. 앱을 완전히 종료한 후 다시 여세요.</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>첫 실행 시 Steam을 다운로드합니다. 몇 분 정도 걸릴 수 있습니다.</item>
         <item>기본적으로 앱을 나가면 Steam이 일시 중지되며, 다시 돌아오면 중단된 부분부터 재개됩니다.</item>
@@ -2886,7 +2886,7 @@
     <string name="storage_legend_stores">기타 스토어</string>
     <string name="storage_legend_desktop">데스크톱 앱</string>
     <string name="storage_legend_system">Linux 시스템</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">정리</string>
     <string name="storage_clean_up_lede">설치된 게임이나 진행 중인 다운로드에는 영향을 주지 않습니다.</string>
     <string name="storage_nothing_to_clean">지금은 정리할 항목이 없습니다.</string>
@@ -3052,7 +3052,7 @@
     <string name="boot_movie_tab_sound">소리</string>
     <string name="boot_movie_installed">설치된 동영상</string>
     <string name="boot_movie_browse">찾아보기</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">가져옴</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

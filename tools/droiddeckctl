@@ -25,7 +25,7 @@ from adb_device import DeviceResolutionError, resolve_serial
 from proot_profile import report as proot_profile_report
 
 
-PACKAGE = os.environ.get("DROIDDECK_PACKAGE", "com.droiddeck.launcher")
+PACKAGE = os.environ.get("DROIDDECK_PACKAGE", "com.droiddeckspace.launcher")
 AUTHORITY = f"content://{PACKAGE}.agent"
 PACKAGE_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+")
 STEAM_CLIENT_APP = 769

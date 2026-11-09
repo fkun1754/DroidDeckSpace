@@ -3,12 +3,19 @@ package com.droiddeck.launcher.runtime.container;
 import android.content.Context;
 import android.util.Log;
 
+import android.system.Os;
+
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -35,8 +42,21 @@ public final class SuShell {
     private static Boolean rootAvailable;
     private static String suBinary;
     private static volatile long lastProbeAtMs;
+    private static final Object BRIDGE_LOCK = new Object();
+    private static volatile File bridgeDir;
+    private static RootBridge bridge;
 
     private SuShell() {}
+
+    /**
+     * Enables the persistent root bridge. Every `su -c` costs ~6 s on this device (KernelSU
+     * redirects su through ksud), so the app starts one root shell script that serves commands
+     * over FIFOs in its own private directory; later commands cost milliseconds.
+     */
+    public static void init(Context context) {
+        if (context == null) return;
+        bridgeDir = new File(context.getFilesDir(), "container/root-bridge");
+    }
 
     public static boolean isRootAvailable(Context context) {
         synchronized (LOCK) {
@@ -81,15 +101,21 @@ public final class SuShell {
     private static boolean probe() {
         synchronized (LOCK) {
             if (rootAvailable != null) return rootAvailable;
+            lastProbeAtMs = System.currentTimeMillis();
+            int attempt = 0;
             for (String candidate : SU_CANDIDATES) {
+                // The first attempt may wait for the user to answer a root prompt.
+                int timeout = attempt++ == 0 ? PROBE_TIMEOUT_FIRST_MS : PROBE_TIMEOUT_MS;
                 List<String> argv = Arrays.asList(candidate, "-c",
-                        watchdogScript("id -u", PROBE_TIMEOUT_MS));
+                        watchdogScript("id -u", timeout));
                 ExecResult result = runRaw(argv, candidate + " -c 'id -u'",
-                        PROBE_TIMEOUT_MS + WATCHDOG_GRACE_MS, null, null, null, false, true);
-                if (!result.timedOut && result.exitCode == 0 && "0".equals(result.stdout.trim())) {
+                        saturatedAdd(timeout, WATCHDOG_GRACE_MS), null, null, null, false, true);
+                                if (!result.timedOut && result.exitCode == 0
+                        && "0".equals(result.stdout.trim())) {
                     suBinary = candidate;
                     rootAvailable = true;
-                    Log.i(TAG, "root shell available via " + candidate);
+                    Log.i(TAG, "root shell available via " + candidate
+                            + " (" + result.durationMs + "ms)");
                     return true;
                 }
             }
@@ -126,6 +152,14 @@ public final class SuShell {
         if (!isRootAvailable(null)) {
             return ExecResult.failure(command, "root is not available (su not found or not granted)");
         }
+        if (onLine == null && stdin == null && cancelled == null) {
+            RootBridge rootBridge = ensureBridge();
+            if (rootBridge != null) {
+                ExecResult bridged = rootBridge.exec(command, timeoutMs);
+                if (bridged != null) return bridged;
+            }
+        }
+
         String binary;
         synchronized (LOCK) {
             binary = suBinary;
@@ -189,6 +223,234 @@ public final class SuShell {
         }
         out.append('\'');
         return out.toString();
+    }
+
+    private static final String BRIDGE_SCRIPT = "#!/system/bin/sh\n"
+            + "export PATH=/system/bin:/system/xbin:/data/adb/ksu/bin:$PATH\n"
+            + "out=$1; in=$2; exec 3>\"$out\" 2>/dev/null || exit 1; exec 4<\"$in\" 2>/dev/null || exit 3\n"
+            + "while IFS= read -r line <&4; do\n"
+            + "  [ -n \"$line\" ] || continue\n"
+            + "  nonce=$(printf '%s' \"$line\" | cut -d'|' -f1);"
+            + " tmo=$(printf '%s' \"$line\" | cut -d'|' -f2);"
+            + " b64=$(printf '%s' \"$line\" | cut -d'|' -f3)\n"
+            + "  cmd=$(printf '%s' \"$b64\" | /system/bin/base64 -d 2>/dev/null) || cmd=\n"
+            + "  tmp=/data/local/tmp/.ddroot.$nonce\n"
+            + "  { /system/bin/timeout \"$tmo\" /system/bin/sh -c \"$cmd\"; } > \"$tmp\" 2>&1\n"
+            + "  rc=$?\n"
+            + "  printf '__DD_BEGIN_%s__\\n' \"$nonce\" >&3\n"
+            + "  cat \"$tmp\" >&3 2>/dev/null\n"
+            + "  printf '__DD_END_%s rc=%s\\n' \"$nonce\" \"$rc\" >&3\n"
+            + "  rm -f \"$tmp\"\n"
+            + "done\n"
+            + "exit 0\n";
+
+    /** One root shell script started with a single `su -c`, serving commands over a FIFO pair. */
+    private static final class RootBridge {
+        final File inFifo;
+        final File outFifo;
+        final Process process;
+        final FileOutputStream in;
+        final LinkedBlockingQueue<String> lines = new LinkedBlockingQueue<>();
+        final Thread reader;
+        volatile boolean broken;
+        long generation;
+
+        private RootBridge(File inFifo, File outFifo, Process process, FileOutputStream in) {
+            this.inFifo = inFifo;
+            this.outFifo = outFifo;
+            this.process = process;
+            this.in = in;
+            this.reader = new Thread(() -> {
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(
+                        new FileInputStream(outFifo), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = r.readLine()) != null) lines.offer(line);
+                } catch (IOException ignored) {
+                }
+                lines.offer(END_OF_STREAM);
+            }, "root-bridge-out");
+            reader.setDaemon(true);
+            reader.start();
+        }
+
+        static RootBridge start(File dir) {
+            if (!dir.isDirectory() && !dir.mkdirs()) return null;
+            File script = new File(dir, "bridge.sh");
+            try {
+                byte[] want = BRIDGE_SCRIPT.getBytes(StandardCharsets.UTF_8);
+                if (!script.isFile() || script.length() != want.length
+                        || !Arrays.equals(java.nio.file.Files.readAllBytes(script.toPath()), want)) {
+                    java.nio.file.Files.write(script.toPath(), want);
+                }
+                Os.chmod(script.getPath(), 0700);
+            } catch (Exception e) {
+                Log.w(TAG, "cannot stage the root bridge script: " + e.getMessage());
+                return null;
+            }
+            long generation = System.currentTimeMillis();
+            File in = new File(dir, "in-" + generation + ".fifo");
+            File out = new File(dir, "out-" + generation + ".fifo");
+            for (File fifo : new File[]{in, out}) {
+                fifo.delete();
+                try {
+                    Os.mkfifo(fifo.getPath(), 0600);
+                } catch (Exception e) {
+                    Log.w(TAG, "cannot create the root bridge fifo: " + e.getMessage());
+                    return null;
+                }
+            }
+            Process process;
+            try {
+                process = new ProcessBuilder("su", "-c", "exec /system/bin/sh "
+                        + quote(script.getPath()) + " " + quote(out.getPath()) + " "
+                        + quote(in.getPath())).redirectErrorStream(true).start();
+            } catch (IOException e) {
+                Log.w(TAG, "cannot start the root bridge: " + e.getMessage());
+                return null;
+            }
+            // Opening the fifos blocks until the root script reaches the same point; do it off
+            // the caller thread with a deadline so a denied `su` cannot hang the app.
+            final Object lock = new Object();
+            final FileOutputStream[] writer = new FileOutputStream[1];
+            final boolean[] opened = new boolean[1];
+            Thread opener = new Thread(() -> {
+                try (FileInputStream ignoredOut = new FileInputStream(out)) {
+                    FileOutputStream inWriter = new FileOutputStream(in);
+                    synchronized (lock) {
+                        writer[0] = inWriter;
+                        opened[0] = true;
+                        lock.notifyAll();
+                    }
+                } catch (IOException e) {
+                    synchronized (lock) {
+                        lock.notifyAll();
+                    }
+                }
+            }, "root-bridge-open");
+            opener.setDaemon(true);
+            opener.start();
+            synchronized (lock) {
+                long deadline = System.currentTimeMillis() + 25_000;
+                while (!opened[0] && System.currentTimeMillis() < deadline) {
+                    try {
+                        lock.wait(Math.max(50, deadline - System.currentTimeMillis()));
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+                if (!opened[0] || !process.isAlive()) {
+                    process.destroyForcibly();
+                    in.delete();
+                    out.delete();
+                    return null;
+                }
+                RootBridge bridge = new RootBridge(in, out, process, writer[0]);
+                bridge.generation = generation;
+                return bridge;
+            }
+        }
+
+        boolean alive() {
+            return !broken && process.isAlive();
+        }
+
+        ExecResult exec(String command, int timeoutMs) {
+            synchronized (this) {
+                if (!alive()) return null;
+                String nonce = String.valueOf(System.nanoTime());
+                int seconds = timeoutMs > 0 ? Math.max(1, (timeoutMs + 999) / 1000) : 86400;
+                String b64 = Base64.getEncoder().encodeToString(
+                        command.getBytes(StandardCharsets.UTF_8));
+                long started = System.nanoTime();
+                try {
+                    in.write((nonce + "|" + seconds + "|" + b64 + "\n")
+                            .getBytes(StandardCharsets.UTF_8));
+                    in.flush();
+                } catch (IOException e) {
+                    broken = true;
+                    return null;
+                }
+                StringBuilder stdout = new StringBuilder();
+                boolean sawBegin = false;
+                boolean timedOut = false;
+                int exit = -1;
+                long deadline = started + TimeUnit.SECONDS.toNanos(seconds + 10);
+                while (true) {
+                    long remaining = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
+                    if (remaining <= 0) {
+                        timedOut = true;
+                        break;
+                    }
+                    String line;
+                    try {
+                        line = lines.poll(Math.max(10, Math.min(remaining, 250)),
+                                TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        broken = true;
+                        return null;
+                    }
+                    if (line == null) {
+                        if (!process.isAlive()) break;
+                        continue;
+                    }
+                    if (END_OF_STREAM.equals(line)) break;
+                    String begin = "__DD_BEGIN_" + nonce + "__";
+                    String endPrefix = "__DD_END_" + nonce + " rc=";
+                    if (line.equals(begin)) {
+                        sawBegin = true;
+                    } else if (line.startsWith(endPrefix)) {
+                        try {
+                            exit = Integer.parseInt(line.substring(endPrefix.length()).trim());
+                        } catch (NumberFormatException ignored) {
+                        }
+                        break;
+                    } else if (sawBegin) {
+                        stdout.append(line).append('\n');
+                    }
+                }
+                long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+                if (timedOut) {
+                    broken = true;
+                    return new ExecResult(command, -1, stdout.toString(), "",
+                            true, elapsed);
+                }
+                if (!sawBegin) {
+                    broken = true;
+                    return null;
+                }
+                return new ExecResult(command, exit, stdout.toString(), "", false, elapsed);
+            }
+        }
+
+        void close() {
+            broken = true;
+            try {
+                in.close();
+            } catch (IOException ignored) {
+            }
+            try {
+                process.destroyForcibly();
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+
+    private static final String END_OF_STREAM = "\u0000__DD_EOS__";
+
+    private static RootBridge ensureBridge() {
+        if (bridgeDir == null) return null;
+        synchronized (BRIDGE_LOCK) {
+            if (bridge != null && bridge.alive()) return bridge;
+            bridge = RootBridge.start(bridgeDir);
+            if (bridge == null) {
+                Log.w(TAG, "root bridge unavailable; falling back to one-shot su");
+            } else {
+                Log.i(TAG, "root bridge ready (generation " + bridge.generation + ")");
+            }
+            return bridge;
+        }
     }
 
     private static ExecResult runRaw(List<String> argv, String display, int timeoutMs, String stdin,

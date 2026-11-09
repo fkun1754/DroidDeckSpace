@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">Garder ouvert</string>
     <string name="steamvr_recovery_restarting">Réinitialisation du rendu graphique et réouverture de SteamVR…</string>
     <string name="steamvr_recovery_failed">DroidDeck n\'a pas pu redémarrer automatiquement. Fermez complètement l\'application, puis rouvrez-la.</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>Le premier lancement télécharge Steam. Cela peut prendre quelques minutes.</item>
         <item>Par défaut, quitter l\'application met Steam en pause ; y revenir reprend là où vous vous étiez arrêté.</item>
@@ -2944,7 +2944,7 @@
     <string name="storage_legend_stores">Autres boutiques</string>
     <string name="storage_legend_desktop">Applications de bureau</string>
     <string name="storage_legend_system">Système Linux</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">Nettoyage</string>
     <string name="storage_clean_up_lede">Rien ici ne touche à vos jeux installés ni aux téléchargements en cours.</string>
     <string name="storage_nothing_to_clean">Rien à nettoyer pour le moment.</string>
@@ -3119,7 +3119,7 @@
     <string name="boot_movie_tab_sound">Son</string>
     <string name="boot_movie_installed">Vidéos installées</string>
     <string name="boot_movie_browse">Parcourir</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">Importée</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

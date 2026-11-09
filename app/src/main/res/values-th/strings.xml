@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">เปิดไว้ต่อ</string>
     <string name="steamvr_recovery_restarting">กำลังรีเซ็ตกราฟิกและเปิด SteamVR อีกครั้ง…</string>
     <string name="steamvr_recovery_failed">DroidDeck รีสตาร์ทโดยอัตโนมัติไม่ได้ ปิดแอปให้สนิทแล้วเปิดใหม่อีกครั้ง</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>การเริ่มใช้งานครั้งแรกจะดาวน์โหลด Steam ซึ่งอาจใช้เวลาสักครู่</item>
         <item>ตามค่าเริ่มต้น การออกจากแอปจะหยุด Steam ไว้ชั่วคราว แล้วกลับมาทำงานต่อจากจุดเดิมเมื่อคุณเปิดแอปอีกครั้ง</item>
@@ -2886,7 +2886,7 @@
     <string name="storage_legend_stores">สโตร์อื่น</string>
     <string name="storage_legend_desktop">แอปเดสก์ท็อป</string>
     <string name="storage_legend_system">ระบบ Linux</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">ล้าง</string>
     <string name="storage_clean_up_lede">ไม่มีอะไรตรงนี้แตะเกมที่ติดตั้งหรือดาวน์โหลดที่กำลังทำงาน</string>
     <string name="storage_nothing_to_clean">ไม่มีอะไรให้ล้างตอนนี้</string>
@@ -3052,7 +3052,7 @@
     <string name="boot_movie_tab_sound">เสียง</string>
     <string name="boot_movie_installed">วิดีโอที่ติดตั้งแล้ว</string>
     <string name="boot_movie_browse">เรียกดู</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">นำเข้าแล้ว</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

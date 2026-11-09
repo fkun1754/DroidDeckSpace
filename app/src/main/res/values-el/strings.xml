@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">Να μείνει ανοιχτό</string>
     <string name="steamvr_recovery_restarting">Επαναφορά γραφικών και εκ νέου άνοιγμα του SteamVR…</string>
     <string name="steamvr_recovery_failed">Το DroidDeck δεν μπόρεσε να κάνει αυτόματη επανεκκίνηση. Κλείστε εντελώς την εφαρμογή και ανοίξτε την ξανά.</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>Η πρώτη εκτέλεση κάνει λήψη του Steam. Αυτό μπορεί να διαρκέσει μερικά λεπτά.</item>
         <item>Από προεπιλογή, η έξοδος από την εφαρμογή θέτει το Steam σε παύση· συνεχίζει από εκεί που είχε μείνει όταν επιστρέψετε.</item>
@@ -2915,7 +2915,7 @@
     <string name="storage_legend_stores">Άλλα καταστήματα</string>
     <string name="storage_legend_desktop">Εφαρμογές επιφάνειας εργασίας</string>
     <string name="storage_legend_system">Σύστημα Linux</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">Καθαρισμός</string>
     <string name="storage_clean_up_lede">Τίποτα εδώ δεν αγγίζει εγκατεστημένα παιχνίδια ή λήψεις σε εξέλιξη.</string>
     <string name="storage_nothing_to_clean">Δεν υπάρχει κάτι για καθάρισμα τώρα.</string>
@@ -3081,7 +3081,7 @@
     <string name="boot_movie_tab_sound">Ήχος</string>
     <string name="boot_movie_installed">Εγκατεστημένα βίντεο</string>
     <string name="boot_movie_browse">Περιήγηση</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">Εισαγμένο</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">Stäng inte</string>
     <string name="steamvr_recovery_restarting">Återställer grafiken och öppnar SteamVR igen…</string>
     <string name="steamvr_recovery_failed">DroidDeck kunde inte starta om automatiskt. Stäng appen helt och öppna den sedan igen.</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>Första starten laddar ned Steam. Det kan ta några minuter.</item>
         <item>Som standard pausas Steam när du lämnar appen. Det fortsätter där det slutade när du kommer tillbaka.</item>
@@ -2915,7 +2915,7 @@
     <string name="storage_legend_stores">Andra butiker</string>
     <string name="storage_legend_desktop">Skrivbordsappar</string>
     <string name="storage_legend_system">Linux-systemet</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">Rensa</string>
     <string name="storage_clean_up_lede">Inget här rör installerade spel eller pågående hämtningar.</string>
     <string name="storage_nothing_to_clean">Det finns inget att rensa just nu.</string>
@@ -3081,7 +3081,7 @@
     <string name="boot_movie_tab_sound">Ljud</string>
     <string name="boot_movie_installed">Installerade videor</string>
     <string name="boot_movie_browse">Bläddra</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">Importerad</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

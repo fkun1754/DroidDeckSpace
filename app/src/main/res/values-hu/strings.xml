@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">Nyitva tartás</string>
     <string name="steamvr_recovery_restarting">A grafika visszaállítása és a SteamVR újranyitása…</string>
     <string name="steamvr_recovery_failed">A DroidDeck nem tudott automatikusan újraindulni. Zárja be teljesen az alkalmazást, majd nyissa meg újra.</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>Az első indítás letölti a Steamet. Ez néhány percet vehet igénybe.</item>
         <item>Alapértelmezés szerint az alkalmazás elhagyása szünetelteti a Steamet; visszatéréskor ott folytatja, ahol abbahagyta.</item>
@@ -2915,7 +2915,7 @@
     <string name="storage_legend_stores">Más áruházak</string>
     <string name="storage_legend_desktop">Asztali alkalmazások</string>
     <string name="storage_legend_system">Linux rendszer</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">Takarítás</string>
     <string name="storage_clean_up_lede">Itt semmi sem érinti a telepített játékokat vagy a futó letöltéseket.</string>
     <string name="storage_nothing_to_clean">Most nincs mit takarítani.</string>
@@ -3081,7 +3081,7 @@
     <string name="boot_movie_tab_sound">Hang</string>
     <string name="boot_movie_installed">Telepített videók</string>
     <string name="boot_movie_browse">Tallózás</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">Importált</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

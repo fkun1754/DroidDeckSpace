@@ -27,6 +27,7 @@ public final class ContainerRuntime {
     private ContainerRuntime() {}
 
     public static boolean isAvailable(Context context) {
+        SuShell.init(context);
         Boolean known = available;
         if (known != null) return known;
         synchronized (START_LOCK) {
@@ -126,42 +127,44 @@ public final class ContainerRuntime {
     public static void awaitReady(Context context, String name) {
         long started = System.currentTimeMillis();
         long deadline = started + READY_TIMEOUT_MS;
-        boolean execReady = false;
-        long execReadyAt = 0;
+        // The init writes this marker into the app data dir before it execs the session, so the
+        // app can poll it with a plain File check: one root command per 500ms dominated startup.
+        File readyMarker = new File(ContainerPaths.waylandDir(context), "ready");
         String lastState = null;
-        String lastError = "";
+        StringBuilder lastError = new StringBuilder();
+        long lastStateCheck = 0;
+        boolean execReady = false;
         while (System.currentTimeMillis() < deadline) {
-            String state = DroidspacesCli.state(name);
-            lastState = state;
-            if (DroidspacesCli.RUNNING.equals(state)) {
-                if (!execReady) {
-                    ExecResult probe = testExecutable(context, name, ContainerPaths.GUEST_SESSION);
-                    if (probe.ok()) {
-                        execReady = true;
-                        execReadyAt = System.currentTimeMillis();
-                        Log.i(TAG, "container '" + name + "' can execute " + ContainerPaths.GUEST_SESSION);
-                    } else {
-                        lastError = probe.describe();
-                    }
-                } else {
-                    ExecResult marker = DroidspacesCli.run(context, name,
-                            Arrays.asList("test", "-f", ContainerPaths.GUEST_READY), 10_000);
-                    if (marker.ok()) return;
-                    if (System.currentTimeMillis() - execReadyAt > READY_MARKER_GRACE_MS) {
-                        Log.w(TAG, "container '" + name + "' never wrote "
-                                + ContainerPaths.GUEST_READY + "; continuing (older runtime image)");
-                        return;
-                    }
+            if (readyMarker.isFile()) {
+                ExecResult probe = testExecutable(context, name, ContainerPaths.GUEST_SESSION);
+                if (probe.ok()) {
+                    Log.i(TAG, "container '" + name + "' is ready (marker after "
+                            + (System.currentTimeMillis() - started) + " ms)");
+                    return;
                 }
-            } else if (DroidspacesCli.STOPPED.equals(state)
-                    && System.currentTimeMillis() - started > 3_000) {
-                break;
+                lastError.setLength(0);
+                lastError.append(probe.describe());
             }
-            sleep(READY_POLL_MS);
+            long now = System.currentTimeMillis();
+            if (now - lastStateCheck > 1_500) {
+                lastStateCheck = now;
+                lastState = DroidspacesCli.state(name);
+                if (DroidspacesCli.STOPPED.equals(lastState) && now - started > 3_000) break;
+            }
+            if (!execReady && now - started > READY_MARKER_GRACE_MS) {
+                // Older runtime images never write the marker; fall back to probing the session.
+                ExecResult probe = testExecutable(context, name, ContainerPaths.GUEST_SESSION);
+                if (probe.ok()) {
+                    Log.w(TAG, "container '" + name + "' has no ready marker; continuing (older image)");
+                    return;
+                }
+                execReady = true;
+            }
+            sleep(100);
         }
         throw new IllegalStateException("container '" + name + "' did not become ready within "
-                + READY_TIMEOUT_MS / 1000 + "s (state=" + lastState + ", sessionExecutable="
-                + execReady + ")\n" + lastError + "\n" + diagnostics(context, name));
+                + READY_TIMEOUT_MS / 1000 + "s (state=" + lastState + ")\n" + lastError
+                + "\n" + diagnostics(context, name));
     }
 
     public static void stop(Context context) {
@@ -357,6 +360,22 @@ public final class ContainerRuntime {
         if (!result.ok()) {
             Log.w(TAG, "could not clear the stale container config (" + configDir + ", "
                     + autoConfig + "): " + result.stderrTail(200));
+        }
+        // Earlier builds derived other names from the application id (renames, debug suffixes).
+        // Their configs are dead weight and can carry old binds; only stopped ones are touched.
+        File containers = new File(ContainerPaths.WORKSPACE, "Containers");
+        File[] staleDirs = containers.listFiles();
+        if (staleDirs != null) {
+            for (File dir : staleDirs) {
+                String staleName = dir.getName();
+                if (!staleName.startsWith("droiddeck.")
+                        || staleName.equals(name)
+                        || DroidspacesCli.RUNNING.equals(DroidspacesCli.state(staleName))) {
+                    continue;
+                }
+                ExecResult removed = SuShell.exec("rm -rf " + SuShell.quote(dir.getPath()), 15_000);
+                if (removed.ok()) Log.i(TAG, "removed stale container config '" + staleName + "'");
+            }
         }
         String legacy = ContainerPaths.LEGACY_CONTAINER_NAME;
         if (!legacy.equals(name)) {

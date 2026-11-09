@@ -30,7 +30,7 @@
     <string name="steamvr_recovery_cancel">Keep open</string>
     <string name="steamvr_recovery_restarting">Resetting graphics and reopening SteamVR…</string>
     <string name="steamvr_recovery_failed">DroidDeck could not restart automatically. Close the app completely, then reopen it.</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string name="steam_wall_label" translatable="false">DroidDeck Wall</string>
     <string name="wall_settings_fps" translatable="false">Frame rate (fps)</string>
     <string name="wall_settings_match" translatable="false">Match screen</string>
@@ -3173,7 +3173,7 @@
     <string name="storage_legend_stores">Other stores</string>
     <string name="storage_legend_desktop">Desktop apps</string>
     <string name="storage_legend_system">Linux system</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">Clean up</string>
     <string name="storage_clean_up_lede">Nothing here touches your installed games or downloads in progress.</string>
     <string name="storage_nothing_to_clean">Nothing to clean up right now.</string>
@@ -3359,7 +3359,7 @@
     <string name="boot_movie_tab_sound">Sound</string>
     <string name="boot_movie_installed">Installed movies</string>
     <string name="boot_movie_browse">Browse</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">Imported</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

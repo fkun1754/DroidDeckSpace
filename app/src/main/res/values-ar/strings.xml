@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">إبقاؤه مفتوحًا</string>
     <string name="steamvr_recovery_restarting">جارٍ إعادة ضبط الرسومات وإعادة فتح SteamVR…</string>
     <string name="steamvr_recovery_failed">تعذّر على DroidDeck إعادة التشغيل تلقائيًا. أغلق التطبيق تمامًا، ثم أعد فتحه.</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>يُنزَّل Steam عند التشغيل الأول. قد يستغرق ذلك بضع دقائق.</item>
         <item>افتراضيًا، يؤدي الخروج من التطبيق إلى إيقاف Steam مؤقتًا، ويُستأنف من حيث توقف عند عودتك.</item>
@@ -3031,7 +3031,7 @@
     <string name="storage_legend_stores">متاجر أخرى</string>
     <string name="storage_legend_desktop">تطبيقات سطح المكتب</string>
     <string name="storage_legend_system">نظام Linux</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">التنظيف</string>
     <string name="storage_clean_up_lede">لا يمس أي شيء هنا الألعاب المثبَّتة ولا التنزيلات الجارية.</string>
     <string name="storage_nothing_to_clean">لا يوجد ما يُنظَّف الآن.</string>
@@ -3233,7 +3233,7 @@
     <string name="boot_movie_tab_sound">الصوت</string>
     <string name="boot_movie_installed">الفيديوهات المثبّتة</string>
     <string name="boot_movie_browse">استعراض</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">مستورد</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

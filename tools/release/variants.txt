@@ -1,4 +1,4 @@
-standard    com.droiddeck.launcher       -
+standard    com.droiddeckspace.launcher    -
 pubg        com.tencent.ig               -pubg
 antutu      com.antutu.benchmark.full    -antutu
 ludashi     com.ludashi.benchmark        -ludashi

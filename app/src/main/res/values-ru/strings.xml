@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">Не закрывать</string>
     <string name="steamvr_recovery_restarting">Сброс графики и повторный запуск SteamVR…</string>
     <string name="steamvr_recovery_failed">Не удалось автоматически перезапустить DroidDeck. Полностью закройте приложение и откройте его снова.</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>При первом запуске будет загружен Steam. Это может занять несколько минут.</item>
         <item>По умолчанию при выходе из приложения Steam приостанавливается; при возвращении работа возобновляется с того же места.</item>
@@ -3056,7 +3056,7 @@
     <string name="storage_legend_stores">Другие магазины</string>
     <string name="storage_legend_desktop">Настольные приложения</string>
     <string name="storage_legend_system">Система Linux</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">Очистка</string>
     <string name="storage_clean_up_lede">Здесь ничего не трогает установленные игры и текущие загрузки.</string>
     <string name="storage_nothing_to_clean">Сейчас чистить нечего.</string>
@@ -3240,7 +3240,7 @@
     <string name="boot_movie_tab_sound">Звук</string>
     <string name="boot_movie_installed">Установленные видео</string>
     <string name="boot_movie_browse">Обзор</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">Импортировано</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

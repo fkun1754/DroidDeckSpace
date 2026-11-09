@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">Biarkan terbuka</string>
     <string name="steamvr_recovery_restarting">Mereset grafis dan membuka kembali SteamVR…</string>
     <string name="steamvr_recovery_failed">DroidDeck tidak bisa dimulai ulang secara otomatis. Tutup aplikasi sepenuhnya, lalu buka lagi.</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>Proses pertama mengunduh Steam. Ini mungkin memerlukan beberapa menit.</item>
         <item>Secara default, keluar dari aplikasi akan menjeda Steam; sesi dilanjutkan dari posisi terakhir saat Anda kembali.</item>
@@ -2886,7 +2886,7 @@
     <string name="storage_legend_stores">Toko lain</string>
     <string name="storage_legend_desktop">Aplikasi desktop</string>
     <string name="storage_legend_system">Sistem Linux</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">Bersihkan</string>
     <string name="storage_clean_up_lede">Tidak ada di sini yang menyentuh gim terpasang atau unduhan yang berjalan.</string>
     <string name="storage_nothing_to_clean">Tidak ada yang perlu dibersihkan sekarang.</string>
@@ -3052,7 +3052,7 @@
     <string name="boot_movie_tab_sound">Suara</string>
     <string name="boot_movie_installed">Video terpasang</string>
     <string name="boot_movie_browse">Telusuri</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">Diimpor</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>

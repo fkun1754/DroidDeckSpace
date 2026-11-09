@@ -39,6 +39,16 @@ class App : Application() {
         if (process == "$packageName:vr_recovery" || process == "$packageName:rgb_diagnostic" ||
             process == "$packageName:shortcuts_sync" || process == "$packageName:bottom_desktop") return
         CrashHandler.install(this)
+        Thread({
+            runCatching {
+                if (com.droiddeck.launcher.runtime.container.ContainerRuntime.isAvailable(this) &&
+                    com.droiddeck.launcher.runtime.container.ContainerRuntime.isRunning(this)
+                ) {
+                    android.util.Log.i("App", "retiring a container left behind by a previous app process")
+                    com.droiddeck.launcher.runtime.container.ContainerRuntime.stop(this)
+                }
+            }.onFailure { android.util.Log.w("App", "container warm-up failed", it) }
+        }, "container-warmup").start()
         com.droiddeck.launcher.core.SteamIntegration.syncShortcutsListing(this)
         com.droiddeck.launcher.session.QuestExperimental.initialize(this)
         com.droiddeck.launcher.session.SessionPrefs.applyNtsyncDefault(this)

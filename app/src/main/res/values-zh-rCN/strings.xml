@@ -7,7 +7,7 @@
     <string name="steamvr_recovery_cancel">保持打开</string>
     <string name="steamvr_recovery_restarting">正在重置图形并重新打开 SteamVR…</string>
     <string name="steamvr_recovery_failed">DroidDeck 无法自动重启。请完全关闭应用，然后重新打开。</string>
-    <string name="app_name">DroidDeck</string>
+    <string name="app_name">DroidDeckSpace</string>
     <string-array name="loading_hints">
         <item>首次运行会下载 Steam，这可能需要几分钟。</item>
         <item>默认情况下，离开应用会暂停 Steam；返回后会从原处继续。</item>
@@ -2890,7 +2890,7 @@
     <string name="storage_legend_stores">其他商店</string>
     <string name="storage_legend_desktop">桌面应用</string>
     <string name="storage_legend_system">Linux 系统</string>
-    <string name="storage_legend_app">DroidDeck</string>
+    <string name="storage_legend_app">DroidDeckSpace</string>
     <string name="storage_clean_up_title">清理</string>
     <string name="storage_clean_up_lede">此处不会影响已安装的游戏或进行中的下载。</string>
     <string name="storage_nothing_to_clean">目前没有可清理的内容。</string>
@@ -3056,7 +3056,7 @@
     <string name="boot_movie_tab_sound">声音</string>
     <string name="boot_movie_installed">已安装的动画</string>
     <string name="boot_movie_browse">浏览</string>
-    <string name="boot_movie_source_droiddeck">DroidDeck</string>
+    <string name="boot_movie_source_droiddeck">DroidDeckSpace</string>
     <string name="boot_movie_source_import">已导入</string>
     <string name="boot_movie_source_repo">SteamDeckRepo</string>
     <string name="boot_movie_source_steam">Steam</string>
