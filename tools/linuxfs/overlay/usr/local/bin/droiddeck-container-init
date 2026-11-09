@@ -172,6 +172,11 @@ chmod 0755 /run/dbus 2>/dev/null || true
 ensure_machine_id
 ensure_named_user
 clear_stale_session_files
+# Optional device/session customisation hook (e.g. mounting cloud drives before the session
+# starts). Runs as root, in the background, so a slow network mount never delays the session.
+if [ -x /usr/local/bin/droiddeck-container-extra ]; then
+  /usr/local/bin/droiddeck-container-extra >>/tmp/droiddeck-container-extra.log 2>&1 &
+fi
 prepare_fake_sysfs
 
 set --

@@ -19,7 +19,7 @@ class App : Application() {
         super.onCreate()
         Thread({ runCatching { EnhancedSessionLogShare.cleanupAbandonedStages(this) } }, "diagnostic-stage-cleanup").start()
         com.droiddeck.launcher.ui.Themes.loadGradient(this)
-        com.droiddeck.launcher.ui.BuildWatermark.install(this)
+        // Build watermark intentionally not installed (no debug overlay in the UI).
         HomeApp.trackRecents(this)
         val process = if (android.os.Build.VERSION.SDK_INT >= 28) Application.getProcessName()
             else (getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager)
