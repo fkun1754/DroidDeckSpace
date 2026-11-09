@@ -25,6 +25,7 @@ public final class SuShell {
     // KernelSU and Magisk both install on the PATH or in /system/bin; probing more candidates
     // would cost one timeout each on a device without root.
     private static final String[] SU_CANDIDATES = {"su", "/system/bin/su"};
+    private static final int PROBE_TIMEOUT_FIRST_MS = 20_000;
     private static final int PROBE_TIMEOUT_MS = 5_000;
     private static final int OUTPUT_CAP = 256 * 1024;
     private static final String WATCHDOG_MARKER = "__DROIDDECK_WATCHDOG_TIMEOUT__";
@@ -33,6 +34,7 @@ public final class SuShell {
     private static final Object LOCK = new Object();
     private static Boolean rootAvailable;
     private static String suBinary;
+    private static volatile long lastProbeAtMs;
 
     private SuShell() {}
 
@@ -52,6 +54,11 @@ public final class SuShell {
 
     public static boolean isRootMemoized() {
         return Boolean.TRUE.equals(rootState());
+    }
+
+    /** Wall-clock time of the last probe, or 0 when none has run yet; lets UI throttle retries. */
+    public static long lastProbeAtMs() {
+        return lastProbeAtMs;
     }
 
     /** Probes off the main thread; UI code reads rootState() and re-reads it after a delay. */

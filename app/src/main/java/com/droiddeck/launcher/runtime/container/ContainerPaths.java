@@ -8,7 +8,10 @@ import java.io.File;
  * bind destinations (/dd, /gd), never through its host path.
  */
 public final class ContainerPaths {
-    public static final String CONTAINER_NAME = "droiddeck";
+    public static final String LEGACY_CONTAINER_NAME = "droiddeck";
+
+    /** Derived per application id so coexisting builds (variants, debug) never share a container. */
+    public static final String CONTAINER_NAME = "droiddeck." + com.droiddeck.launcher.BuildConfig.APPLICATION_ID;
 
     public static final String CLI = "/data/local/Droidspaces/bin/droidspaces";
     public static final String WORKSPACE = "/data/local/Droidspaces";

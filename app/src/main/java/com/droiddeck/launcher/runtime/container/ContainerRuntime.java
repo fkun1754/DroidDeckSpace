@@ -347,10 +347,29 @@ public final class ContainerRuntime {
     private static void cleanStaleContainerConfig(Context context, String name) {
         if (DroidspacesCli.RUNNING.equals(DroidspacesCli.state(name))) return;
         File configDir = new File(ContainerPaths.WORKSPACE + "/Containers", name);
-        ExecResult result = SuShell.exec("rm -rf " + SuShell.quote(configDir.getPath()), 15_000);
+        // droidspaces auto-detects a config next to the rootfs (dirname(rootfs)/container.config)
+        // and loads it as the base before the CLI flags; rootfs is filesDir/linuxfs, so that file
+        // has to go as well or an old experiment's binds survive every start.
+        File autoConfig = new File(ContainerPaths.rootfs(context).getParentFile(), "container.config");
+        String command = "rm -rf " + SuShell.quote(configDir.getPath())
+                + " " + SuShell.quote(autoConfig.getPath());
+        ExecResult result = SuShell.exec(command, 15_000);
         if (!result.ok()) {
-            Log.w(TAG, "could not clear the stale container config " + configDir + ": "
-                    + result.stderrTail(200));
+            Log.w(TAG, "could not clear the stale container config (" + configDir + ", "
+                    + autoConfig + "): " + result.stderrTail(200));
+        }
+        String legacy = ContainerPaths.LEGACY_CONTAINER_NAME;
+        if (!legacy.equals(name)) {
+            try {
+                if (DroidspacesCli.RUNNING.equals(DroidspacesCli.state(legacy))) {
+                    Log.i(TAG, "stopping the legacy container '" + legacy + "'");
+                    DroidspacesCli.stop(legacy);
+                }
+                SuShell.exec("rm -rf " + SuShell.quote(ContainerPaths.WORKSPACE + "/Containers/" + legacy),
+                        15_000);
+            } catch (RuntimeException e) {
+                Log.w(TAG, "could not retire the legacy container '" + legacy + "': " + e.getMessage());
+            }
         }
     }
 

@@ -508,6 +508,10 @@ class SessionService : Service() {
                 Toast.makeText(this, R.string.session_directaudio_missing, Toast.LENGTH_LONG).show()
             }
         }
+        if (SessionState.failureCode == "CONTAINER_UNAVAILABLE") {
+            // The user may have granted root after the previous attempt; re-probe on retry.
+            ContainerRuntime.forget()
+        }
         if (!ContainerRuntime.isAvailable(this)) {
             val message = getString(R.string.session_container_unavailable)
             Log.e(TAG, "$message (root or the DroidSpaces CLI is unavailable)")

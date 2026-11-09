@@ -343,6 +343,15 @@ Gradle 堆，并发构建曾 OOM 掉 Kotlin 编译。纯 JVM 单测用同样参�
 `:app:testDebugUnitTest --tests "com.droiddeck.launcher.runtime.container.*"`，实测 19 个测试全部通过
 （首跑需下载 junit/robolectric，约 3 分钟）。
 
+### 7b. Guest user identity by session mode
+
+The session always runs as the app uid. The container init rewrites `/etc/passwd`/`/etc/group` at
+boot so that uid carries a mode-appropriate name: big-picture keeps the historical `root` alias
+(Steam/Proton paths unchanged), desktop modes use the ordinary `droiddeck` alias first. Both names
+map to the same uid, so installed applications and files are shared between the modes. The rewrite
+restores app-uid ownership and 0644 mode afterwards because the app still merges its guest
+accounts into `/etc/passwd` (proot-era path).
+
 ## 8. Open items / later phases
 
 * Persistent guest agent over a unix socket (replaces per-call `droidspaces run`).

@@ -13,7 +13,12 @@ internal object HudFrames {
     const val CAPACITY = 1024
 
     /** Host side of the guest's /run/droiddeck-hud/frames in the container runtime. */
-    fun hostFile(context: Context): File = File(LinuxRuntime.hudDir(context), "frames")
+    fun hostFile(context: Context): File {
+        val file = File(LinuxRuntime.hudDir(context), "frames")
+        // An older container init created this path as a directory; the FIFO cannot be made there.
+        if (file.isDirectory) file.deleteRecursively()
+        return file
+    }
 
     @JvmStatic external fun nativeOpen(path: String): Long
     @JvmStatic external fun nativeClose(handle: Long)
