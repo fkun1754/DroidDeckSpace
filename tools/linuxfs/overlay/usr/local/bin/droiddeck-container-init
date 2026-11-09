@@ -42,12 +42,14 @@ ensure_named_user() {
   _dd_user=$(container_user_name)
   _dd_alias=${_dd_user:-root}
   _dd_comment=root
+  _dd_home=/root
   [ -n "$_dd_user" ] && _dd_comment="DroidDeck container user"
+  [ -n "$_dd_user" ] && _dd_home="/home/$_dd_user"
   if [ -w /etc/passwd ]; then
     _dd_tmp=$(mktemp /etc/passwd.XXXXXX 2>/dev/null) && {
       {
-        printf '%s:x:%s:%s:%s:/root:/bin/bash\n' "$_dd_alias" "$DD_UID" "$DD_GID" \
-          "$_dd_comment"
+        printf '%s:x:%s:%s:%s:%s:/bin/bash\n' "$_dd_alias" "$DD_UID" "$DD_GID" \
+          "$_dd_comment" "$_dd_home"
         grep -v "^[^:]*:[^:]*:${DD_UID}:" /etc/passwd
       } > "$_dd_tmp" && mv -f "$_dd_tmp" /etc/passwd ||
         { rm -f "$_dd_tmp"; warn "cannot update /etc/passwd"; }

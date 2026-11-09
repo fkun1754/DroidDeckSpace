@@ -816,8 +816,10 @@ class SessionService : Service() {
         guest.add("/usr/bin/env")
         guest.add("-i")
         guest.add("DROIDDECK_BWRAP_SOCKET=" + com.droiddeck.launcher.runtime.BwrapSpawner.socket(this))
-        guest.add("HOME=/root")
-        guest.add("USER=root")
+        val desktopHome = SessionState.mode == MODE_DESKTOP
+        guest.add(if (desktopHome) "HOME=/home/droiddeck" else "HOME=/root")
+        guest.add(if (desktopHome) "USER=droiddeck" else "USER=root")
+        if (desktopHome) guest.add("LOGNAME=droiddeck")
         guest.add("PATH=" + LinuxRuntime.GUEST_PATH)
         guest.add("TERM=xterm-256color")
         if (SessionState.mode == MODE_DESKTOP) {
