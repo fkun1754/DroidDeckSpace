@@ -26,6 +26,11 @@ public final class ContainerRuntime {
 
     private ContainerRuntime() {}
 
+    /** Last known availability (null until the warm-up probe has run); the UI must not block on su. */
+    public static Boolean cachedAvailable() {
+        return available;
+    }
+
     public static boolean isAvailable(Context context) {
         SuShell.init(context);
         Boolean known = available;

@@ -3,6 +3,8 @@ package com.droiddeck.launcher.ui
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -54,7 +56,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -407,6 +413,74 @@ internal fun SetupPanel(
                                     Column(Modifier.fillMaxWidth().clip(Shape14).background(colors.surface).border(1.dp, AttentionAmber.copy(alpha = 0.5f), Shape14)) { check(false) }
                                 }
                             }
+                        }
+                        val containerCtx = ctx
+                        var containerRootOk by remember { mutableStateOf(java.lang.Boolean.TRUE.equals(com.droiddeck.launcher.runtime.container.SuShell.rootState())) }
+                        var containerCliOk by remember { mutableStateOf(java.lang.Boolean.TRUE.equals(com.droiddeck.launcher.runtime.container.ContainerRuntime.cachedAvailable())) }
+                        var containerRechecking by remember { mutableStateOf(false) }
+                        val containerScope = rememberCoroutineScope()
+                        val recheckContainer: () -> Unit = {
+                            if (!containerRechecking) {
+                                containerRechecking = true
+                                containerScope.launch {
+                                    com.droiddeck.launcher.runtime.container.ContainerRuntime.forget()
+                                    val ok = withContext(Dispatchers.IO) {
+                                        com.droiddeck.launcher.runtime.container.ContainerRuntime.isAvailable(containerCtx)
+                                    }
+                                    containerRootOk = java.lang.Boolean.TRUE.equals(com.droiddeck.launcher.runtime.container.SuShell.rootState())
+                                    containerCliOk = ok
+                                    containerRechecking = false
+                                }
+                            }
+                        }
+                        val openSuManager: () -> Unit = {
+                            val managers = listOf("me.weishu.kernelsu", "com.topjohnwu.magisk")
+                            val launched = managers.any { pkg ->
+                                containerCtx.packageManager.getLaunchIntentForPackage(pkg)?.let { intent ->
+                                    runCatching { containerCtx.startActivity(intent) }.isSuccess
+                                } == true
+                            }
+                            if (!launched) runCatching {
+                                containerCtx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://kernelsu.org/")))
+                            }
+                        }
+                        val openDroidspaces: () -> Unit = {
+                            val pkg = "com.droidspaces.app"
+                            val intent = containerCtx.packageManager.getLaunchIntentForPackage(pkg)
+                            if (intent != null) runCatching { containerCtx.startActivity(intent) }
+                            else runCatching {
+                                containerCtx.startActivity(Intent(Intent.ACTION_VIEW,
+                                    Uri.parse("https://github.com/ravindu644/Droidspaces-OSS/releases/latest")))
+                            }
+                        }
+                        SettingsGroup(stringResource(R.string.setup_container_group)) {
+                            CheckRow(
+                                when { containerRechecking -> CheckState.BUSY; containerRootOk -> CheckState.OK; else -> CheckState.WARN },
+                                stringResource(if (containerRootOk) R.string.setup_container_root_ok else R.string.setup_container_root_missing),
+                                stringResource(R.string.setup_container_root_detail),
+                                action = {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        SecondaryButton(stringResource(R.string.setup_container_grant), compact = true, onClick = openSuManager)
+                                        SecondaryButton(stringResource(R.string.setup_container_recheck), compact = true, enabled = !containerRechecking, onClick = recheckContainer)
+                                    }
+                                },
+                            )
+                            CheckRow(
+                                when { containerRechecking -> CheckState.BUSY; containerCliOk -> CheckState.OK; else -> CheckState.WARN },
+                                stringResource(if (containerCliOk) R.string.setup_container_cli_ok else R.string.setup_container_cli_missing),
+                                stringResource(R.string.setup_container_cli_detail),
+                                action = {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        if (!containerCliOk) SecondaryButton(stringResource(R.string.setup_container_install), compact = true, onClick = openDroidspaces)
+                                        else SecondaryButton(stringResource(R.string.setup_container_open), compact = true, onClick = openDroidspaces)
+                                    }
+                                },
+                            )
+                            Text(
+                                stringResource(R.string.setup_container_guide),
+                                fontSize = 13.sp, color = colors.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            )
                         }
                         SettingsGroup(stringResource(R.string.setup_runtime)) { runtimeCheck(false) }
                         SteamIntegrationGroup(s.integration, s.integrationFocus, a.onIntegration, a.onIntegrationAppInfo, a.onIntegrationLocation)

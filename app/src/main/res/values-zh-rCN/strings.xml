@@ -3634,4 +3634,19 @@
     <string name="input_reset_positions">重置位置</string>
     <string name="input_show_label">显示标签</string>
     <string name="input_layout_import_failed">无法导入此布局</string>
+
+    <string name="setup_container_group">DroidSpaces 运行时</string>
+    <string name="setup_container_guide">首次使用：从 GitHub Release 安装 DroidSpaces APK，授予 root 并打开一次让它安装后端（提示重启时请重启）；然后在 KernelSU/Magisk 中允许 DroidDeck 使用 root，再点“重新检测”。</string>
+    <string name="setup_container_root_ok">已获得 root 权限</string>
+    <string name="setup_container_root_missing">需要 root 权限</string>
+    <string name="setup_container_root_detail">需要在 KernelSU/Magisk 中允许 DroidDeck 执行 su。</string>
+    <string name="setup_container_cli_ok">DroidSpaces 已就绪</string>
+    <string name="setup_container_cli_missing">未安装 DroidSpaces</string>
+    <string name="setup_container_cli_detail">DroidDeck 的 Linux 运行在 DroidSpaces 容器里。请安装 DroidSpaces APK、授予 root 并打开一次。</string>
+    <string name="setup_container_grant">去授权</string>
+    <string name="setup_container_install">安装 DroidSpaces</string>
+    <string name="setup_container_open">打开 DroidSpaces</string>
+    <string name="setup_container_recheck">重新检测</string>
+    <string name="content_container_required">需要 DroidSpaces + root</string>
+    <string name="content_needs_container">请先在“设置 → 概览”中配置 DroidSpaces 运行时，再启动会话。</string>
 </resources>

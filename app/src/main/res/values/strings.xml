@@ -3822,4 +3822,19 @@
     <string name="input_reset_positions">Reset positions</string>
     <string name="input_show_label">Show label</string>
     <string name="input_layout_import_failed">Could not import this layout</string>
+
+    <string name="setup_container_group">DroidSpaces runtime</string>
+    <string name="setup_container_guide">First time: install the DroidSpaces APK from its GitHub release, grant it root, open it once so it installs its backend (reboot if it asks), then allow DroidDeck in KernelSU/Magisk and tap Re-check.</string>
+    <string name="setup_container_root_ok">Root access granted</string>
+    <string name="setup_container_root_missing">Root access is required</string>
+    <string name="setup_container_root_detail">KernelSU/Magisk must allow DroidDeck to run su.</string>
+    <string name="setup_container_cli_ok">DroidSpaces is ready</string>
+    <string name="setup_container_cli_missing">DroidSpaces is not installed</string>
+    <string name="setup_container_cli_detail">DroidDeck runs Linux in a DroidSpaces container. Install the DroidSpaces APK, grant root and open it once.</string>
+    <string name="setup_container_grant">Grant root</string>
+    <string name="setup_container_install">Install DroidSpaces</string>
+    <string name="setup_container_open">Open DroidSpaces</string>
+    <string name="setup_container_recheck">Re-check</string>
+    <string name="content_container_required">DroidSpaces + root required</string>
+    <string name="content_needs_container">Set up the DroidSpaces runtime in Setup before starting a session.</string>
 </resources>

@@ -154,6 +154,8 @@ class FrontEndState(
     val battleNetInstalled: Boolean = false,
     val removalPending: Boolean = false,
     val runtimeActionsBlocked: Boolean = false,
+    val containerRoot: Boolean = false,
+    val containerCli: Boolean = false,
     val backActionsInverted: Boolean = false,
     val buildLabel: String = "local",
     val oscMode: String = SessionPrefs.OSC_AUTO,
@@ -186,7 +188,9 @@ class FrontEndState(
     val storesView: String = SessionPrefs.DEFAULT_STORES_VIEW,
     val storeDownloadsActive: Int = 0,
     val updates: UpdatesState = UpdatesState(),
-)
+) {
+    val containerReady: Boolean get() = containerRoot && containerCli
+}
 
 class FrontEndActions(
     val onPlay: () -> Unit,

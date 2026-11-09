@@ -403,7 +403,14 @@ private fun LibraryEmpty(s: FrontEndState, a: FrontEndActions, modifier: Modifie
         Rise(1) { Note(stringResource(if (s.shortcutPicker && s.shortcutLibraryScanning) R.string.game_shortcut_scanning else R.string.games_empty)) }
         if (!s.shortcutPicker) Rise(2) {
             Actions {
-                PrimaryButton(stringResource(R.string.games_play_steam), enabled = !s.busy, main = true, icon = Icons.Filled.PlayArrow, modifier = Modifier.padding(top = 12.dp).testTag("play-steam"), onClick = a.onPlay)
+                PrimaryButton(
+                    stringResource(R.string.games_play_steam),
+                    enabled = !s.busy && s.containerReady,
+                    main = true, icon = Icons.Filled.PlayArrow,
+                    modifier = Modifier.padding(top = 12.dp).testTag("play-steam"),
+                    onClick = a.onPlay,
+                )
+                if (!s.containerReady) ActionChip(stringResource(R.string.content_container_required), ok = false)
             }
         }
         Box(Modifier.padding(top = 12.dp)) { GameFileFolderActions(s, a) }

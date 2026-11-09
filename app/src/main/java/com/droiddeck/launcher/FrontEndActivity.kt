@@ -1157,6 +1157,8 @@ class FrontEndActivity : ComponentActivity() {
                 FrontEndScreen(
                     FrontEndState(
                         installed = installed, ready = ready, available = available?.version, removalPending = removalPending, runtimeActionsBlocked = runtimeChangesBlocked(),
+                        containerRoot = java.lang.Boolean.TRUE.equals(com.droiddeck.launcher.runtime.container.SuShell.rootState()),
+                        containerCli = java.lang.Boolean.TRUE.equals(com.droiddeck.launcher.runtime.container.ContainerRuntime.cachedAvailable()),
                         vkBridge = vkBridge, venus = venus, venusHostVulkan = venusHostVulkan, vkBridgeSafe = vkBridgeSafe, bridgeProtonDxvk = bridgeProtonDxvk, adreno = adrenoGpu,
                         shortcutPicker = shortcutPicker,
                         preparingGames = preparingGames,
