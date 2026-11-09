@@ -1,6 +1,7 @@
 # Container runtime: running the Linux runtime in DroidSpaces instead of proot
 
-Status: implementation in progress (branch `feat/droidspaces-runtime`).
+Status: implemented (branch `feat/droidspaces-runtime`); `:app:compileDebugKotlin` and the
+container runtime unit tests pass, see §7. Device validation: `notes/impl-device-validation.md`.
 Owner: DroidDeck fork. This document is the contract for the parallel implementation;
 keep it in sync when interfaces change.
 
