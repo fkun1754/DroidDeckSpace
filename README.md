@@ -80,11 +80,8 @@ Then press **Play** (Steam Gaming Mode) or **Desktop**.
 ### First session
 
 - Big-picture sessions run with `HOME=/root` (Steam/Proton paths unchanged).
-- Desktop sessions run as the normal user `droiddeck` with `HOME=/home/droiddeck`; the shared
-  `OneDrive`, `Storage` and `~/Agent` paths are linked in.
-- The optional migration bundle for the extra apps (DeepSeek Harness, Obsidian, Spark Store,
-  OneDrive mount, krfb VNC, workspace) is documented in
-  [docs/droidspaces/customisation.md](docs/droidspaces/customisation.md).
+- Desktop sessions run as the normal user `droiddeck` with `HOME=/home/droiddeck` (the app uid is
+  shared between modes, so files and sockets stay accessible).
 
 ## What changed from DroidDeck
 
@@ -144,8 +141,9 @@ flow and CI build the complete native libraries.
 - **App**: stable channel only, from this repository’s
   [catalog](https://raw.githubusercontent.com/fkun1754/DroidDeckSpace/main/catalog.json).
 - **Linux runtime**: official DroidDeck runtime feed, installed automatically into the DroidSpaces
-  container. A routine runtime update keeps user data and the DroidDeckSpace customisation; after a
-  major runtime update, re-run the migration script to restore apt-installed system packages.
+  container. Runtime updates keep `/root` and `/home`; packages installed into the system image
+  (for example through apt) are replaced by the new image and need to be reinstalled after a major
+  runtime update.
 
 ## Credits and license
 

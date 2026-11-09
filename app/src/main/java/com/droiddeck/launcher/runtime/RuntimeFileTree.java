@@ -77,15 +77,7 @@ public final class RuntimeFileTree {
     static java.util.List<String> userPaths(File tree) throws IOException {
         java.util.List<String> paths = new java.util.ArrayList<>(java.util.Arrays.asList(
                 "root", "home",
-                "opt/appimages/user", "opt/droiddeck-apps", "opt/droiddeck/wincomponents",
-                // DroidDeckSpace customisation payload (see /storage/emulated/0/DroidDeckSpace-migrate)
-                "opt/node-v24.9.0-linux-arm64", "opt/obsidian", "opt/spark-store", "opt/durapps",
-                "usr/local/bin/droiddeck-container-extra", "usr/local/bin/droiddeck-session-exec",
-                "usr/local/bin/droiddeck-dsh-web", "usr/local/bin/droiddeck-dsh-term",
-                "usr/local/bin/obsidian", "usr/local/bin/rclone", "usr/local/bin/spark-store",
-                "usr/local/bin/node", "usr/local/bin/npm", "usr/local/bin/npx", "usr/local/bin/dsh",
-                "usr/share/icons/hicolor/scalable/apps/dsh.svg",
-                "usr/share/applications/spark-store.desktop"));
+                "opt/appimages/user", "opt/droiddeck-apps", "opt/droiddeck/wincomponents"));
         for (String n : children(new File(tree, "usr/local/share/applications"))) {
             if (n.endsWith(".desktop") && (n.startsWith("droiddeck-app-") || n.startsWith("droiddeck-appimage-")))
                 paths.add("usr/local/share/applications/" + n);
