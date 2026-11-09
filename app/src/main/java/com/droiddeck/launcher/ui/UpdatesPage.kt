@@ -267,24 +267,11 @@ private fun ChannelPicker(u: UpdatesState, ua: UpdatesActions) {
     val catalog = u.catalog
     val tests = catalog?.tests.orEmpty()
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // DroidDeckSpace publishes a single stable channel.
         ChannelCard(
             Icons.Outlined.Verified, stringResource(R.string.upd_stable), stringResource(R.string.upd_stable_hint),
-            catalog?.stable?.let { stringResource(R.string.upd_version_ago, it.version ?: it.tag, ago(it.publishedAt)) }, u.follow.channel == Channel.STABLE,
+            catalog?.stable?.let { stringResource(R.string.upd_version_ago, it.version ?: it.tag, ago(it.publishedAt)) }, true,
         ) { ua.onFollow(Follow(Channel.STABLE)) }
-        ChannelCard(
-            Icons.Outlined.Bolt, stringResource(R.string.upd_preview), stringResource(R.string.upd_preview_hint),
-            catalog?.preview?.let { ago(it.publishedAt) }, u.follow.channel == Channel.NIGHTLY,
-        ) { ua.onFollow(Follow(Channel.NIGHTLY)) }
-        ChannelCard(
-            Icons.Outlined.Science, stringResource(R.string.upd_tests), stringResource(R.string.upd_tests_hint),
-            if (tests.isEmpty()) stringResource(R.string.upd_tests_none) else pluralStringResource(R.plurals.upd_tests_count, tests.size, tests.size),
-            u.follow.channel == Channel.TEST, enabled = tests.isNotEmpty() || u.follow.channel == Channel.TEST,
-        ) { tests.firstOrNull()?.let { ua.onFollow(Follow(Channel.TEST, it.pr)) } }
-        AnimatedVisibility(u.follow.channel == Channel.TEST && tests.isNotEmpty(), enter = expandVertically(Motion.sp(1f)) + fadeIn(Motion.sp(1f)), exit = shrinkVertically(Motion.sp(1f)) + fadeOut(Motion.sp(1f))) {
-            Column(Modifier.padding(start = 18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                tests.forEach { t -> TestRow(t, u.follow.pr == t.pr) { ua.onFollow(Follow(Channel.TEST, t.pr)) } }
-            }
-        }
     }
 }
 

@@ -16,8 +16,8 @@ import java.security.MessageDigest
 
 object AppUpdates {
     private const val TAG = "AppUpdates"
-    private const val REPO = "Droid-Deck/DroidDeck"
-    private const val CI_REPO = "Droid-Deck/DroidDeck-CI"
+    private const val REPO = "fkun1754/DroidDeckSpace"
+    private const val CI_REPO = "fkun1754/DroidDeckSpace"
     private const val CATALOG_URL = "https://raw.githubusercontent.com/$CI_REPO/main/catalog.json"
     private const val PREFS = "app_updates"
     private const val KEY_CATALOG = "catalog"
@@ -220,15 +220,8 @@ object AppUpdates {
     internal class Guess(val follow: Follow, val certain: Boolean)
 
     internal fun guessFollow(catalog: Catalog?, me: Installed): Guess {
-        if (me.pr != 0) return Guess(Follow(Channel.TEST, me.pr), true)
-        val stable = catalog?.stable
-        if (stable != null && isRunning(stable, me)) return Guess(Follow(Channel.STABLE), true)
-        val publishedPreview = catalog != null && me.updatable && (
-            catalog.preview?.let { isRunning(it, me) } == true ||
-                catalog.recentPreviews.any { matchesInstalledCommit(it.commit, me.commit) }
-            )
-        if (stable?.version?.let { compareVersions(me.version, it) < 0 } == true) return Guess(Follow(Channel.STABLE), !publishedPreview)
-        return Guess(Follow(if (publishedPreview) Channel.NIGHTLY else Channel.STABLE), false)
+        // DroidDeckSpace only ships a stable channel; preview/test builds are not published.
+        return Guess(Follow(Channel.STABLE), true)
     }
 
     fun setFollow(context: Context, follow: Follow) {
@@ -239,12 +232,10 @@ object AppUpdates {
 
     private fun stored(context: Context): Follow? {
         val v = prefs(context).getString(KEY_CHANNEL, null) ?: return null
+        // Only the stable channel exists in DroidDeckSpace; migrate old selections silently.
         return when {
             v == "stable" -> Follow(Channel.STABLE)
-            v == "nightly" || v == "preview" -> Follow(Channel.NIGHTLY)
-            v.startsWith("test:") -> v.removePrefix("test:").toIntOrNull()?.let {
-                Follow(Channel.TEST, it)
-            }
+            v == "nightly" || v == "preview" || v.startsWith("test:") -> Follow(Channel.STABLE)
             else -> null
         }
     }
