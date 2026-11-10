@@ -35,6 +35,8 @@ object SessionFiles {
     fun stage(context: Context, root: File, startsSession: Boolean = false) {
         if (DesktopCatalog.desktopInstalled(root) && !DesktopCatalog.desktopFromPack(root)) try { DesktopCatalog.cleanLegacy(context) }
         catch (e: Exception) { Log.w(TAG, "LXQt cleanup will retry next session", e) }
+        runCatching { com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.ensureL2sHardlinks(root) }
+            .onFailure { Log.w(TAG, "l2s repair will retry next session", it) }
         GameEnvironmentStore.publish(context)
         WinComponents.publish(context)
         val files = arrayOf(

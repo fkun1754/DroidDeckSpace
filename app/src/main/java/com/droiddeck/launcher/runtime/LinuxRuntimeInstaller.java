@@ -356,6 +356,7 @@ public final class LinuxRuntimeInstaller {
                 RuntimeFileTree.delete(staging, null);
                 return false;
             }
+            ensureL2sHardlinks(staging);
             FileUtils.writeString(new File(staging, VERSION_FILE), release.version);
 
             if (!discard(old, null)) {
@@ -714,6 +715,83 @@ public final class LinuxRuntimeInstaller {
             Log.w(TAG, "l2s link " + link + " -> " + target + ": " + e);
             return false;
         }
+    }
+
+    /**
+     * The official runtime deduplicates its utilities as {@code .l2s.*} symlink chains pointing at one
+     * patched uutils coreutils binary. That binary compares the requested utility with
+     * {@code /proc/self/exe} and refuses to run when the executable name is the shared payload name,
+     * so under DroidSpaces (which has no proot translation layer) every coreutils command fails.
+     * Replace each chain with a hard link to the payload: the executable name then matches argv[0].
+     */
+    public static void ensureL2sHardlinks(File root) {
+        File marker = new File(root, L2S_MARKER);
+        if (marker.isFile()) return;
+        int fixed = repairL2sLinks(root);
+        if (fixed >= 0) {
+            try { //noinspection ResultOfMethodCallIgnored
+                marker.createNewFile();
+            } catch (IOException e) {
+                Log.w(TAG, "could not mark the l2s hard links: " + e);
+            }
+            Log.i(TAG, "l2s links: " + fixed + " utilities re-linked as hard links");
+        }
+    }
+
+    static final String L2S_MARKER = ".droiddeck-l2s-hardlinks";
+
+    static int repairL2sLinks(File root) {
+        String[] dirs = {
+                "usr/bin", "usr/sbin", "bin", "sbin", "usr/local/bin",
+                "usr/lib/cargo/bin", "usr/lib/cargo/bin/coreutils",
+        };
+        int fixed = 0;
+        try {
+            for (String rel : dirs) {
+                File dir = new File(root, rel);
+                File[] entries = dir.listFiles();
+                if (entries == null) continue;
+                for (File entry : entries) {
+                    if (!java.nio.file.Files.isSymbolicLink(entry.toPath())) continue;
+                    File target = resolveL2sTarget(root, entry);
+                    if (target == null || target.equals(entry)) continue;
+                    if (!target.getName().startsWith(L2S)) continue;
+                    try {
+                        java.nio.file.Files.delete(entry.toPath());
+                        java.nio.file.Files.createLink(entry.toPath(), target.toPath());
+                        fixed++;
+                    } catch (IOException | UnsupportedOperationException e) {
+                        Log.w(TAG, "l2s hard link " + entry + " -> " + target + ": " + e);
+                    }
+                }
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "l2s repair failed: " + e);
+            return -1;
+        }
+        return fixed;
+    }
+
+    private static File resolveL2sTarget(File root, File link) {
+        java.nio.file.Path current = link.toPath();
+        for (int hops = 0; hops < 12 && java.nio.file.Files.isSymbolicLink(current); hops++) {
+            java.nio.file.Path target;
+            try {
+                target = java.nio.file.Files.readSymbolicLink(current);
+            } catch (IOException e) {
+                return null;
+            }
+            if (target.isAbsolute()) {
+                String shown = target.toString();
+                current = new File(root, shown.startsWith("/") ? shown.substring(1) : shown).toPath().normalize();
+            } else {
+                java.nio.file.Path parent = current.getParent();
+                if (parent == null) return null;
+                current = parent.resolve(target).normalize();
+            }
+        }
+        File file = current.toFile();
+        return java.nio.file.Files.isRegularFile(current, java.nio.file.LinkOption.NOFOLLOW_LINKS) ? file : null;
     }
 
     static File partFile(File file) {

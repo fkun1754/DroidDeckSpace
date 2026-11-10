@@ -64,3 +64,17 @@ Every `su -c` costs seconds under KernelSU, so the app counts container commands
 the root bridge makes short commands milliseconds, `awaitReady` watches a marker file, and the app
 warms the probe/bridge when it starts. Measured on the target phone: steam ~15.6 s, desktop
 ~10.4 s from request to first frame.
+
+## Runtime image utilities (l2s links)
+
+The official runtime ships most coreutils as `.l2s.*` symlink chains pointing at one patched
+uutils multi-call binary. That binary checks the requested utility name against
+`/proc/self/exe` and refuses to run when the executable is the shared payload; under proot the
+translation layer hides this, but a plain container sees the payload name and every `ls`, `mkdir`,
+`cat`, … fails ("Security violation: Requested utility … does not match executable name").
+
+`LinuxRuntimeInstaller.ensureL2sHardlinks` therefore converts the chains under `/usr/bin`,
+`/usr/sbin`, `/bin`, `/sbin`, `/usr/local/bin` and `/usr/lib/cargo/bin` into **hard links** to the
+payload, so the executable name matches `argv[0]`. It runs after a runtime install and once per
+rootfs at session preparation (marker `.droiddeck-l2s-hardlinks`), which also repairs runtimes
+installed before the fix.
