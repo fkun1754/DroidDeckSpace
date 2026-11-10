@@ -38,13 +38,15 @@ object RuntimeStore {
     }
 
     fun entries(context: Context): List<Entry> {
-        val hidden = hiddenContainers(context)
-        val stored = read(context).filter { it.container !in hidden }.toMutableList()
-        if (LinuxRuntime.hasRootfsAt(LinuxRuntime.defaultRootDir(context))) {
-            val builtin = defaultEntry(context)
-            if (stored.none { it.container == builtin.container } && builtin.container !in hidden) stored.add(0, builtin)
+        // First run after upgrading from the old single-runtime app: adopt the existing built-in
+        // runtime once. After that the list is purely user managed - there is no mandatory runtime.
+        if (prefs(context).getString(KEY_ENTRIES, null) == null &&
+            LinuxRuntime.hasRootfsAt(LinuxRuntime.defaultRootDir(context))
+        ) {
+            write(context, listOf(defaultEntry(context)))
         }
-        return stored
+        val hidden = hiddenContainers(context)
+        return read(context).filter { it.container !in hidden }
     }
 
     /** Names detached from DroidDeckSpace but still present in DroidSpaces. */
@@ -86,8 +88,15 @@ object RuntimeStore {
         return selected ?: all.firstOrNull()
     }
 
-    fun activeRootfs(context: Context): File =
-        active(context)?.let { File(it.rootfs) } ?: LinuxRuntime.defaultRootDir(context)
+    fun activeRootfs(context: Context): File {
+        active(context)?.let { return File(it.rootfs) }
+        // No active runtime: do not silently fall back to a detached/removed built-in rootfs.
+        return if (ContainerPaths.defaultContainerName() in hiddenContainers(context)) {
+            File(context.filesDir, ".no-runtime")
+        } else {
+            LinuxRuntime.defaultRootDir(context)
+        }
+    }
 
     fun setActive(context: Context, container: String) {
         prefs(context).edit().putString(KEY_ACTIVE, container).apply()

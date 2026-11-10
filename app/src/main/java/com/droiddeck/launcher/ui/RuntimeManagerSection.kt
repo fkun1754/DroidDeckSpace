@@ -165,7 +165,10 @@ internal fun RuntimeManagerSection(
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(enabled = installedVersion != null && !working, onClick = { sub = "repair" }) { Text(stringResource(R.string.runtime_mgr_repair)) }
                     TextButton(
-                        enabled = latestVersion != null && latestVersion != installedVersion && !working,
+                        // Update only applies to an installed runtime; with no runtime the user must
+                        // create/import one instead of triggering an install through Update.
+                        enabled = installedVersion != null && latestVersion != null &&
+                            latestVersion != installedVersion && !working,
                         onClick = { installActive(false) },
                     ) { Text(stringResource(R.string.runtime_mgr_update)) }
                     TextButton(enabled = active != null && !working, onClick = { sub = "remove" }) { Text(stringResource(R.string.runtime_mgr_uninstall_short)) }
