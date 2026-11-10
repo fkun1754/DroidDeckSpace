@@ -78,7 +78,7 @@ public final class ContainerRuntime {
         command.append("for d in ")
                 .append(ContainerPaths.WORKSPACE).append("/Containers/droiddeck.com.droiddeck.* ")
                 .append(ContainerPaths.WORKSPACE).append("/Logs/droiddeck.com.droiddeck.*; do ")
-                .append("[ -e \"$d\" ] && rm -rf \"$d\"; done; ");
+                .append("[ -e \"$d\" ] && rm -rf \"$d\"; done; true");
         ExecResult result = SuShell.exec(command.toString(), 30_000);
         if (!result.ok()) Log.w(TAG, "container cleanup exited " + result.exitCode + ": " + result.combined());
         forget();
