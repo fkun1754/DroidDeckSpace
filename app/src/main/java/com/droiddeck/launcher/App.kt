@@ -41,11 +41,18 @@ class App : Application() {
         CrashHandler.install(this)
         Thread({
             runCatching {
-                if (com.droiddeck.launcher.runtime.container.ContainerRuntime.isAvailable(this) &&
-                    com.droiddeck.launcher.runtime.container.ContainerRuntime.isRunning(this)
-                ) {
-                    android.util.Log.i("App", "retiring a container left behind by a previous app process")
-                    com.droiddeck.launcher.runtime.container.ContainerRuntime.stop(this)
+                if (com.droiddeck.launcher.runtime.container.ContainerRuntime.isAvailable(this)) {
+                    if (com.droiddeck.launcher.runtime.container.ContainerRuntime.isRunning(this)) {
+                        android.util.Log.i("App", "retiring a container left behind by a previous app process")
+                        com.droiddeck.launcher.runtime.container.ContainerRuntime.stop(this)
+                    }
+                    if (!com.droiddeck.launcher.runtime.LinuxRuntime.isInstalled(this)) {
+                        // Data was cleared, the app was reinstalled, or the runtime was removed while
+                        // its DroidSpaces container record survived: drop the orphan so DroidSpaces
+                        // does not keep a dead container around.
+                        android.util.Log.i("App", "removing an orphaned container for a missing runtime")
+                        com.droiddeck.launcher.runtime.container.ContainerRuntime.removeContainers(this)
+                    }
                 }
             }.onFailure { android.util.Log.w("App", "container warm-up failed", it) }
         }, "container-warmup").start()
