@@ -3841,8 +3841,8 @@
     <string name="runtime_mgr_not_imported">No runtime imported</string>
     <string name="runtime_mgr_hint">Import a DroidSpaces container or create a new runtime</string>
     <string name="runtime_mgr_manage">Linux container management</string>
-    <string name="runtime_mgr_import">Import DroidSpaces container</string>
-    <string name="runtime_mgr_new">New runtime</string>
+    <string name="runtime_mgr_import">Import from DroidSpace</string>
+    <string name="runtime_mgr_new">New</string>
     <string name="runtime_mgr_remove">Remove runtime</string>
     <string name="runtime_mgr_new_hint">Downloads the official Linux runtime into a new DroidSpaces container.</string>
     <string name="runtime_mgr_start">Start</string>
@@ -3873,4 +3873,14 @@
     <string name="runtime_mgr_run_at_boot">Run at boot</string>
     <string name="runtime_mgr_keep_running">Keep running in background</string>
     <string name="runtime_mgr_repair">Repair</string>
+
+    <string name="runtime_mgr_repair_confirm_title">Repair runtime?</string>
+    <string name="runtime_mgr_repair_confirm_text">Reinstall %1$s in place? User data and installed applications are kept.</string>
+    <string name="runtime_mgr_use_update">A newer version is available — use Update instead.</string>
+    <string name="runtime_mgr_repairing">Repairing the runtime…</string>
+    <string name="runtime_mgr_repaired">Runtime repaired</string>
+    <string name="runtime_mgr_updated">Runtime updated</string>
+    <string name="runtime_mgr_name_hint">Name (letters, numbers, dot, underscore, dash, spaces)</string>
+    <string name="runtime_mgr_name_invalid">Only letters, numbers, dot, underscore, dash and spaces are allowed</string>
+    <string name="runtime_mgr_name_taken">This name is already in use</string>
 </resources>

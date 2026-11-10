@@ -3653,8 +3653,8 @@
     <string name="runtime_mgr_not_imported">尚未导入运行时</string>
     <string name="runtime_mgr_hint">可导入已有 DroidSpaces 容器，或新建运行时</string>
     <string name="runtime_mgr_manage">Linux 容器管理</string>
-    <string name="runtime_mgr_import">导入 DroidSpaces 容器</string>
-    <string name="runtime_mgr_new">新建运行时</string>
+    <string name="runtime_mgr_import">从 DroidSpace 导入</string>
+    <string name="runtime_mgr_new">新建</string>
     <string name="runtime_mgr_remove">卸载运行时</string>
     <string name="runtime_mgr_new_hint">将官方 Linux 运行时下载到新的 DroidSpaces 容器中。</string>
     <string name="runtime_mgr_start">开始</string>
@@ -3685,4 +3685,14 @@
     <string name="runtime_mgr_run_at_boot">开机运行</string>
     <string name="runtime_mgr_keep_running">保持后台运行</string>
     <string name="runtime_mgr_repair">修复</string>
+
+    <string name="runtime_mgr_repair_confirm_title">修复运行时？</string>
+    <string name="runtime_mgr_repair_confirm_text">将原地重新安装 %1$s，用户数据和已安装应用会保留。</string>
+    <string name="runtime_mgr_use_update">检测到新版本，请使用“更新”。</string>
+    <string name="runtime_mgr_repairing">正在修复运行时…</string>
+    <string name="runtime_mgr_repaired">运行时已修复</string>
+    <string name="runtime_mgr_updated">运行时已更新</string>
+    <string name="runtime_mgr_name_hint">名称（字母、数字、点、下划线、短横线、空格）</string>
+    <string name="runtime_mgr_name_invalid">只能包含字母、数字、点、下划线、短横线和空格</string>
+    <string name="runtime_mgr_name_taken">该名称已被使用</string>
 </resources>

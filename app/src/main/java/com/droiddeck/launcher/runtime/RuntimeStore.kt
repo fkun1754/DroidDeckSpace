@@ -2,20 +2,24 @@ package com.droiddeck.launcher.runtime
 
 import android.content.Context
 import com.droiddeck.launcher.runtime.container.ContainerPaths
+import com.droiddeck.launcher.runtime.container.DroidspacesCli
+import com.droiddeck.launcher.runtime.container.SuShell
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
 /**
- * Imported Linux runtimes. A runtime is a DroidSpaces container plus the rootfs it boots: the
- * built-in runtime lives at files/linuxfs, imported ones keep their DroidSpaces container and
- * rootfs path. Switching only changes which entry sessions use; imported containers are not
- * re-validated on every switch.
+ * Imported Linux runtimes. A runtime is a DroidSpaces container plus its rootfs; the runtime name and
+ * the container name are the same (validated to DroidSpaces' allowed characters), so users never have
+ * to keep two names in sync.
  */
 object RuntimeStore {
     private const val PREFS = "runtime_store"
     private const val KEY_ENTRIES = "entries"
     private const val KEY_ACTIVE = "active"
+
+    /** DroidSpaces accepts letters, numbers, '.', '_', '-' and spaces. */
+    private val NAME = Regex("^[A-Za-z0-9._ -]{1,40}$")
 
     data class Entry(
         val container: String,
@@ -25,25 +29,20 @@ object RuntimeStore {
         val builtin: Boolean = false,
     )
 
-    fun defaultEntry(context: Context): Entry = Entry(
-        container = ContainerPaths.defaultContainerName(),
-        label = context.getString(com.droiddeck.launcher.R.string.runtime_default_label),
-        rootfs = LinuxRuntime.defaultRootDir(context).path,
-        imported = false,
-        builtin = true,
-    )
+    fun validName(name: String): Boolean = NAME.matches(name.trim())
+
+    fun defaultEntry(context: Context): Entry {
+        val name = ContainerPaths.defaultContainerName()
+        return Entry(container = name, label = name, rootfs = LinuxRuntime.defaultRootDir(context).path, imported = false, builtin = true)
+    }
 
     fun entries(context: Context): List<Entry> {
-        val stored = read(context)
-        if (stored.isNotEmpty()) {
-            val base = context.getString(com.droiddeck.launcher.R.string.runtime_default_label)
-            val migrated = stored.map {
-                if (it.label == "DroidDeckSpace Runtime") it.copy(label = base) else it
-            }
-            if (migrated != stored) write(context, migrated)
-            return migrated
+        val stored = read(context).toMutableList()
+        if (LinuxRuntime.hasRootfsAt(LinuxRuntime.defaultRootDir(context))) {
+            val builtin = defaultEntry(context)
+            if (stored.none { it.container == builtin.container }) stored.add(0, builtin)
         }
-        return if (LinuxRuntime.hasRootfsAt(LinuxRuntime.defaultRootDir(context))) listOf(defaultEntry(context)) else emptyList()
+        return stored
     }
 
     fun active(context: Context): Entry? {
@@ -67,13 +66,30 @@ object RuntimeStore {
         if (activate) setActive(context, entry.container)
     }
 
-    fun rename(context: Context, container: String, label: String) {
-        val trimmed = label.trim()
-        if (trimmed.isEmpty()) return
-        val list = entries(context).map {
-            if (it.container == container) it.copy(label = trimmed) else it
-        }
+    /**
+     * Renames a runtime and its DroidSpaces container together. Returns an error message when the
+     * name is invalid/duplicated or the container cannot be renamed (for example while running).
+     */
+    fun rename(context: Context, container: String, newName: String): String? {
+        val name = newName.trim()
+        if (!validName(name)) return "名称只能包含字母、数字、点、下划线、短横线和空格"
+        if (name == container) return null
+        if (entries(context).any { it.container == name }) return "名称已存在"
+        if (RuntimeDiscovery.list(context, true).any { it.name == name }) return "DroidSpaces 中已有同名容器"
+        if (DroidspacesCli.RUNNING == DroidspacesCli.state(container)) return "运行时正在运行，请先停止会话再重命名"
+        val config = q(ContainerPaths.WORKSPACE + "/Containers/" + name + "/container.config")
+        val command = "if [ -d " + q(ContainerPaths.WORKSPACE + "/Containers/" + container) + " ]; then " +
+            "mv " + q(ContainerPaths.WORKSPACE + "/Containers/" + container) + " " +
+            q(ContainerPaths.WORKSPACE + "/Containers/" + name) + "; " +
+            "sed -i 's/^name=.*/name=" + name + "/; s/^hostname=.*/hostname=" + name + "/' " +
+            config + " 2>/dev/null; fi; true"
+        val result = SuShell.exec(command, 20_000)
+        if (!result.ok()) return "重命名 DroidSpaces 容器失败：" + result.combined()
+        val list = read(context).map { if (it.container == container) it.copy(container = name, label = name) else it }
         write(context, list)
+        if (prefs(context).getString(KEY_ACTIVE, null) == container) setActive(context, name)
+        DroidspacesCli.forget()
+        return null
     }
 
     fun remove(context: Context, container: String) {
@@ -84,8 +100,8 @@ object RuntimeStore {
         }
     }
 
-    fun nextLabel(context: Context, taken: Collection<String>): String {
-        val base = context.getString(com.droiddeck.launcher.R.string.runtime_default_label)
+    fun nextName(context: Context, taken: Collection<String>): String {
+        val base = "Runtime"
         val names = entries(context).map { it.label }.toMutableSet()
         names.addAll(taken)
         if (base !in names) return base
@@ -94,14 +110,9 @@ object RuntimeStore {
         return "$base $n"
     }
 
-    fun uniqueContainer(context: Context, taken: Collection<String>): String {
-        val base = ContainerPaths.defaultContainerName() + "."
-        var n = 1
-        while ((base + n) in taken) n++
-        return base + n
-    }
-
     fun imported(context: Context, container: String): Boolean = entries(context).any { it.container == container }
+
+    private fun q(value: String) = SuShell.quote(value)
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -115,7 +126,8 @@ object RuntimeStore {
                 val container = o.optString("container")
                 val rootfs = o.optString("rootfs")
                 if (container.isBlank() || rootfs.isBlank()) return@mapNotNull null
-                Entry(container, o.optString("label", container), rootfs, o.optBoolean("imported"), o.optBoolean("builtin"))
+                // Unify the name: the runtime label is always the DroidSpaces container name.
+                Entry(container, container, rootfs, o.optBoolean("imported"), o.optBoolean("builtin"))
             }
         }.getOrDefault(emptyList())
     }
