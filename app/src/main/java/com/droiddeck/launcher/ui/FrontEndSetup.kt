@@ -427,6 +427,28 @@ internal fun SetupPanel(
                         var showRuntimeManager by remember { mutableStateOf(false) }
                         var showRemoveRuntime by remember { mutableStateOf(false) }
                         val containerScope = rememberCoroutineScope()
+                        val repairActiveRuntime: () -> Unit = {
+                            if (!s.busy && !s.sessionRunning) {
+                                containerScope.launch {
+                                    val release = withContext(Dispatchers.IO) { com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.fetchRelease() }
+                                    if (release == null) {
+                                        android.widget.Toast.makeText(containerCtx, "无法获取运行时版本", android.widget.Toast.LENGTH_SHORT).show()
+                                    } else if (!s.installed.isNullOrEmpty() && release.version != s.installed) {
+                                        android.widget.Toast.makeText(containerCtx, "已安装版本与最新版本不同，请使用“更新”", android.widget.Toast.LENGTH_LONG).show()
+                                    } else {
+                                        val entry = com.droiddeck.launcher.runtime.RuntimeStore.active(containerCtx)
+                                        withContext(Dispatchers.IO) {
+                                            if (entry?.builtin == true || entry == null) {
+                                                com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.install(containerCtx, release, null)
+                                            } else {
+                                                com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.installTo(containerCtx, release, File(entry.rootfs), null)
+                                            }
+                                        }
+                                        android.widget.Toast.makeText(containerCtx, "运行时已修复", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        }
                         val updateActiveRuntime: () -> Unit = {
                             if (!s.busy && !s.sessionRunning) {
                                 containerScope.launch {
@@ -563,7 +585,12 @@ internal fun SetupPanel(
                                                 enabled = !s.busy && !s.runtimeActionsBlocked && !s.sessionRunning,
                                             ) { showRuntimeManager = true }
                                             if (LinuxRuntime.isInstalled(containerCtx)) {
-                                                SecondaryButton(stringResource(R.string.runtime_mgr_update), compact = true, enabled = !s.busy && !s.sessionRunning) { updateActiveRuntime() }
+                                                SecondaryButton(stringResource(R.string.runtime_mgr_repair), compact = true, enabled = !s.busy && !s.sessionRunning) { repairActiveRuntime() }
+                                                SecondaryButton(
+                                                    stringResource(R.string.runtime_mgr_update),
+                                                    compact = true,
+                                                    enabled = !s.busy && !s.sessionRunning && s.available != null && s.available != s.installed,
+                                                ) { updateActiveRuntime() }
                                                 SecondaryButton(stringResource(R.string.runtime_mgr_uninstall_short), compact = true, enabled = !s.busy && !s.sessionRunning) { showRemoveRuntime = true }
                                             }
                                         }

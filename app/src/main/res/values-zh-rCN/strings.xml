@@ -3674,7 +3674,7 @@
     <string name="rtinst_cached">使用已缓存的运行时下载</string>
 
     <string name="runtime_default_label">运行时</string>
-    <string name="runtime_mgr_update">修复 / 更新</string>
+    <string name="runtime_mgr_update">更新</string>
     <string name="runtime_mgr_uninstall_short">卸载</string>
     <string name="runtime_mgr_scanning">正在扫描 DroidSpaces 容器…</string>
     <string name="runtime_mgr_checking">正在检查兼容性…</string>
@@ -3684,4 +3684,5 @@
 
     <string name="runtime_mgr_run_at_boot">开机运行</string>
     <string name="runtime_mgr_keep_running">保持后台运行</string>
+    <string name="runtime_mgr_repair">修复</string>
 </resources>

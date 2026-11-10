@@ -3862,7 +3862,7 @@
     <string name="rtinst_cached">Using the cached runtime download</string>
 
     <string name="runtime_default_label">Runtime</string>
-    <string name="runtime_mgr_update">Repair / Update</string>
+    <string name="runtime_mgr_update">Update</string>
     <string name="runtime_mgr_uninstall_short">Remove</string>
     <string name="runtime_mgr_scanning">Scanning DroidSpaces containers…</string>
     <string name="runtime_mgr_checking">Checking compatibility…</string>
@@ -3872,4 +3872,5 @@
 
     <string name="runtime_mgr_run_at_boot">Run at boot</string>
     <string name="runtime_mgr_keep_running">Keep running in background</string>
+    <string name="runtime_mgr_repair">Repair</string>
 </resources>
