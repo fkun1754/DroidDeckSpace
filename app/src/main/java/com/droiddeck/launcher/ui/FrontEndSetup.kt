@@ -536,10 +536,11 @@ internal fun SetupPanel(
                                         else -> (RuntimeStore.active(containerCtx)?.label ?: stringResource(R.string.setup_installed)) + " · " + activeInstalledVersion
                                     },
                                     action = {
+                                        // Always openable: the manager dialog guards individual actions
+                                        // itself, so a stale busy/phase flag cannot make it unreachable.
                                         SecondaryButton(
                                             stringResource(R.string.runtime_mgr_manage),
                                             compact = true,
-                                            enabled = !s.busy && !s.runtimeActionsBlocked && !s.sessionRunning,
                                         ) { showRuntimeManager = true }
                                     },
                                 )
