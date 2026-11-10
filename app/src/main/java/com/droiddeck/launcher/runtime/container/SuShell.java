@@ -39,7 +39,7 @@ public final class SuShell {
     private static final int WATCHDOG_GRACE_MS = 3_000;
 
     private static final Object LOCK = new Object();
-    private static Boolean rootAvailable;
+    private static volatile Boolean rootAvailable;
     private static String suBinary;
     private static volatile long lastProbeAtMs;
     private static final Object BRIDGE_LOCK = new Object();
@@ -70,6 +70,11 @@ public final class SuShell {
         synchronized (LOCK) {
             return rootAvailable;
         }
+    }
+
+    /** Non-blocking: returns the last probe result without starting or waiting for a probe. */
+    public static Boolean rootStateCached() {
+        return rootAvailable;
     }
 
     public static boolean isRootMemoized() {

@@ -38,10 +38,21 @@ class App : Application() {
         }
         if (process == "$packageName:vr_recovery" || process == "$packageName:rgb_diagnostic" ||
             process == "$packageName:shortcuts_sync" || process == "$packageName:bottom_desktop") return
+        com.droiddeck.launcher.runtime.RuntimeStatus.load(this)
+        Thread({ runCatching { com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.cleanArchiveCache(this) } }, "runtime-cache-cleanup").start()
         CrashHandler.install(this)
         Thread({
             runCatching {
-                if (com.droiddeck.launcher.runtime.container.ContainerRuntime.isAvailable(this)) {
+                // Detection runs once during the first configuration. Later launches use the
+                // persisted result; "Re-check" in Setup refreshes it.
+                if (com.droiddeck.launcher.runtime.RuntimeStatus.checked) return@runCatching
+                val available = com.droiddeck.launcher.runtime.container.ContainerRuntime.isAvailable(this)
+                com.droiddeck.launcher.runtime.RuntimeStatus.publish(
+                    this,
+                    java.lang.Boolean.TRUE.equals(com.droiddeck.launcher.runtime.container.SuShell.rootStateCached()),
+                    available,
+                )
+                if (available) {
                     if (com.droiddeck.launcher.runtime.container.ContainerRuntime.isRunning(this)) {
                         android.util.Log.i("App", "retiring a container left behind by a previous app process")
                         com.droiddeck.launcher.runtime.container.ContainerRuntime.stop(this)
@@ -62,7 +73,8 @@ class App : Application() {
         com.droiddeck.launcher.session.SessionPrefs.settleGpuDriverMode(this)
         com.droiddeck.launcher.update.AppUpdates.init(this)
         com.droiddeck.launcher.core.DownloadSource.init(this)
-        prefetchAddonPacks()
+        // Add-on packs are extracted on demand (session start); pre-extracting them on every app
+        // start competes with the first frame on slower devices.
         GpuClockPin.clearLeftover(this)
         com.droiddeck.launcher.glasses.Glasses.init(this)
         com.droiddeck.launcher.glasses.GlassesMenuMirror.initialize(this)

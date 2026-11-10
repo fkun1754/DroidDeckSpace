@@ -3666,4 +3666,10 @@
     <string name="runtime_mgr_remove_hint">可以只从 DroidDeckSpace 移除，也可以同时卸载对应的 DroidSpaces 容器。</string>
     <string name="runtime_mgr_remove_app">仅从 DroidDeckSpace 卸载</string>
     <string name="runtime_mgr_remove_both">连同 DroidSpaces 容器一起卸载</string>
+
+    <string name="setup_container_detecting">正在检测 root 权限…</string>
+    <string name="setup_container_detecting_droidspaces">正在检测 DroidSpaces…</string>
+    <string name="setup_container_detecting_detail">正在自动检测运行环境，首次启动可能需要几秒钟。</string>
+
+    <string name="rtinst_cached">使用已缓存的运行时下载</string>
 </resources>

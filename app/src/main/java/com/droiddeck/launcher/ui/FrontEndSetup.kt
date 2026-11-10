@@ -415,9 +415,12 @@ internal fun SetupPanel(
                             }
                         }
                         val containerCtx = ctx
-                        var containerRootOk by remember { mutableStateOf(java.lang.Boolean.TRUE.equals(com.droiddeck.launcher.runtime.container.SuShell.rootState())) }
-                        var containerCliOk by remember { mutableStateOf(java.lang.Boolean.TRUE.equals(com.droiddeck.launcher.runtime.container.ContainerRuntime.cachedAvailable())) }
+                        // Detection happens once in the app-start warm-up; this page only reads the
+                        // cached result (and waits for it if the warm-up is still running).
+                        var containerRootOk by remember { mutableStateOf(if (com.droiddeck.launcher.runtime.RuntimeStatus.checked) com.droiddeck.launcher.runtime.RuntimeStatus.root else null) }
+                        var containerCliOk by remember { mutableStateOf(if (com.droiddeck.launcher.runtime.RuntimeStatus.checked) com.droiddeck.launcher.runtime.RuntimeStatus.droidspaces else null) }
                         var containerRechecking by remember { mutableStateOf(false) }
+                        val containerChecking = containerRootOk == null || containerCliOk == null || containerRechecking
                         val containerScope = rememberCoroutineScope()
                         val recheckContainer: () -> Unit = {
                             if (!containerRechecking) {
@@ -427,7 +430,9 @@ internal fun SetupPanel(
                                     val ok = withContext(Dispatchers.IO) {
                                         com.droiddeck.launcher.runtime.container.ContainerRuntime.isAvailable(containerCtx)
                                     }
-                                    containerRootOk = java.lang.Boolean.TRUE.equals(com.droiddeck.launcher.runtime.container.SuShell.rootState())
+                                    val rootOk = java.lang.Boolean.TRUE.equals(com.droiddeck.launcher.runtime.container.SuShell.rootStateCached())
+                                    com.droiddeck.launcher.runtime.RuntimeStatus.publish(containerCtx, rootOk, ok)
+                                    containerRootOk = rootOk
                                     containerCliOk = ok
                                     containerRechecking = false
                                 }
@@ -453,26 +458,57 @@ internal fun SetupPanel(
                                     Uri.parse("https://github.com/ravindu644/Droidspaces-OSS/releases/latest")))
                             }
                         }
+                        androidx.compose.runtime.LaunchedEffect(Unit) {
+                            // Root/DroidSpaces are detected once at app start; only wait for that
+                            // shared result here. Switching pages never re-runs detection.
+                            if (containerChecking) {
+                                repeat(60) {
+                                    kotlinx.coroutines.delay(300)
+                                    if (com.droiddeck.launcher.runtime.RuntimeStatus.checked) {
+                                        containerRootOk = com.droiddeck.launcher.runtime.RuntimeStatus.root
+                                        containerCliOk = com.droiddeck.launcher.runtime.RuntimeStatus.droidspaces
+                                        return@LaunchedEffect
+                                    }
+                                }
+                                // Warm-up failed to publish; fall back to a missing state instead of
+                                // showing a spinner forever.
+                                containerRootOk = false
+                                containerCliOk = false
+                            }
+                        }
                         SettingsGroup(stringResource(R.string.setup_container_group)) {
+                            val checking = containerChecking
                             CheckRow(
-                                when { containerRechecking -> CheckState.BUSY; containerRootOk -> CheckState.OK; else -> CheckState.WARN },
-                                stringResource(if (containerRootOk) R.string.setup_container_root_ok else R.string.setup_container_root_missing),
-                                stringResource(R.string.setup_container_root_detail),
+                                when { checking -> CheckState.BUSY; containerRootOk == true -> CheckState.OK; else -> CheckState.WARN },
+                                stringResource(
+                                    when {
+                                        checking -> R.string.setup_container_detecting
+                                        containerRootOk == true -> R.string.setup_container_root_ok
+                                        else -> R.string.setup_container_root_missing
+                                    }
+                                ),
+                                stringResource(if (checking) R.string.setup_container_detecting_detail else R.string.setup_container_root_detail),
                                 action = {
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        SecondaryButton(stringResource(R.string.setup_container_grant), compact = true, onClick = openSuManager)
-                                        SecondaryButton(stringResource(R.string.setup_container_recheck), compact = true, enabled = !containerRechecking, onClick = recheckContainer)
+                                        SecondaryButton(stringResource(R.string.setup_container_grant), compact = true, enabled = !checking, onClick = openSuManager)
+                                        SecondaryButton(stringResource(R.string.setup_container_recheck), compact = true, enabled = !checking, onClick = recheckContainer)
                                     }
                                 },
                             )
                             CheckRow(
-                                when { containerRechecking -> CheckState.BUSY; containerCliOk -> CheckState.OK; else -> CheckState.WARN },
-                                stringResource(if (containerCliOk) R.string.setup_container_cli_ok else R.string.setup_container_cli_missing),
-                                stringResource(R.string.setup_container_cli_detail),
+                                when { checking -> CheckState.BUSY; containerCliOk == true -> CheckState.OK; else -> CheckState.WARN },
+                                stringResource(
+                                    when {
+                                        checking -> R.string.setup_container_detecting_droidspaces
+                                        containerCliOk == true -> R.string.setup_container_cli_ok
+                                        else -> R.string.setup_container_cli_missing
+                                    }
+                                ),
+                                stringResource(if (checking) R.string.setup_container_detecting_detail else R.string.setup_container_cli_detail),
                                 action = {
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        if (!containerCliOk) SecondaryButton(stringResource(R.string.setup_container_install), compact = true, onClick = openDroidspaces)
-                                        else SecondaryButton(stringResource(R.string.setup_container_open), compact = true, onClick = openDroidspaces)
+                                        if (containerCliOk != true && !checking) SecondaryButton(stringResource(R.string.setup_container_install), compact = true, onClick = openDroidspaces)
+                                        else if (containerCliOk == true) SecondaryButton(stringResource(R.string.setup_container_open), compact = true, onClick = openDroidspaces)
                                     }
                                 },
                             )
@@ -481,8 +517,10 @@ internal fun SetupPanel(
                                 fontSize = 13.sp, color = colors.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                             )
-                            runtimeCheck(false)
-                            RuntimeManagerSection(busy = s.busy, sessionRunning = s.sessionRunning)
+                            if (!checking) {
+                                runtimeCheck(false)
+                                RuntimeManagerSection(busy = s.busy, sessionRunning = s.sessionRunning)
+                            }
                         }
                         SteamIntegrationGroup(s.integration, s.integrationFocus, a.onIntegration, a.onIntegrationAppInfo, a.onIntegrationLocation)
                     }

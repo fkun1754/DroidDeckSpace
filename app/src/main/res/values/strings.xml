@@ -3854,4 +3854,10 @@
     <string name="runtime_mgr_remove_hint">Remove the runtime from DroidDeckSpace only, or uninstall its DroidSpaces container as well.</string>
     <string name="runtime_mgr_remove_app">Remove from DroidDeckSpace only</string>
     <string name="runtime_mgr_remove_both">Also remove the DroidSpaces container</string>
+
+    <string name="setup_container_detecting">Checking root access…</string>
+    <string name="setup_container_detecting_droidspaces">Checking DroidSpaces…</string>
+    <string name="setup_container_detecting_detail">Detecting the runtime environment. This can take a few seconds on the first launch.</string>
+
+    <string name="rtinst_cached">Using the cached runtime download</string>
 </resources>

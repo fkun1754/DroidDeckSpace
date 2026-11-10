@@ -75,25 +75,14 @@ public final class ContainerRuntime {
         names.add("droiddeck.com.droiddeck.launcher.droidspace");
         names.add("droiddeck.com.droiddeck.launcher");
         names.add(ContainerPaths.LEGACY_CONTAINER_NAME);
-        if (DroidspacesCli.installed()) {
-            for (String name : names) {
-                try {
-                    DroidspacesCli.stop(name);
-                } catch (Exception e) {
-                    Log.w(TAG, "could not stop container " + name + ": " + e);
-                }
-            }
-        }
-        StringBuilder command = new StringBuilder();
-        for (String name : names) {
-            command.append("rm -rf ")
-                    .append(ContainerPaths.WORKSPACE).append("/Containers/").append(name).append(' ')
-                    .append(ContainerPaths.WORKSPACE).append("/Logs/").append(name).append(' ')
-                    .append(ContainerPaths.WORKSPACE).append("/Pids/").append(name).append(".pid; ");
-        }
-        // Older builds registered droiddeck.* containers under their own package ids.
-        command.append("for d in ")
-                .append(ContainerPaths.WORKSPACE).append("/Containers/droiddeck.com.droiddeck.* ")
+        StringBuilder command = new StringBuilder("for n in ");
+        for (String name : names) command.append(SuShell.quote(name)).append(' ');
+        command.append("; do if [ -d ").append(ContainerPaths.WORKSPACE).append("/Containers/$n ]; then ")
+                .append(ContainerPaths.CLI).append(" -n \"$n\" stop >/dev/null 2>&1; fi; ")
+                .append("rm -rf ").append(ContainerPaths.WORKSPACE).append("/Containers/$n ")
+                .append(ContainerPaths.WORKSPACE).append("/Logs/$n ")
+                .append(ContainerPaths.WORKSPACE).append("/Pids/$n.pid; done; ")
+                .append("for d in ").append(ContainerPaths.WORKSPACE).append("/Containers/droiddeck.com.droiddeck.* ")
                 .append(ContainerPaths.WORKSPACE).append("/Logs/droiddeck.com.droiddeck.*; do ")
                 .append("[ -e \"$d\" ] && rm -rf \"$d\"; done; true");
         ExecResult result = SuShell.exec(command.toString(), 30_000);

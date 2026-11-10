@@ -121,6 +121,27 @@ public final class LinuxRuntimeInstaller {
     }
 
     private static final String USER_DATA = "root";
+    /** Keep a downloaded runtime archive around so creating several runtimes does not re-download it. */
+    static final long ARCHIVE_RETENTION_MS = 7L * 24L * 60L * 60L * 1000L;
+
+    /** Deletes cached runtime archives older than [ARCHIVE_RETENTION_MS]. */
+    public static void cleanArchiveCache(Context context) {
+        File[] files = context.getCacheDir().listFiles((dir, name) ->
+                name.startsWith("linuxfs") && name.endsWith(".tar.zst"));
+        if (files == null) return;
+        long cutoff = System.currentTimeMillis() - ARCHIVE_RETENTION_MS;
+        for (File file : files) {
+            if (file.lastModified() < cutoff) {
+                Log.i(TAG, "removing expired runtime download " + file.getName());
+                file.delete();
+            }
+        }
+    }
+
+    private static boolean archiveValid(File archive, Release release) {
+        return archive.isFile() && archive.length() > 0
+                && release.sha256.equalsIgnoreCase(Hashes.sha256(archive));
+    }
 
     public static boolean install(Context context, Release release, ProgressListener listener) {
         Job job;
@@ -363,22 +384,29 @@ public final class LinuxRuntimeInstaller {
             String downloading = context.getString(R.string.rtinst_downloading);
             if (listener != null) listener.onProgress(Step.DOWNLOADING, downloading, 0);
             if (!AddonPack.DIRECTAUDIO.await(context, () -> true, packProgress(listener, downloading))) throw new IOException("Cannot download DirectAudio");
-            boolean ok = Downloader.downloadFile(release.url, archive, true, release.sha256, (fraction) -> {
-                if (listener != null) {
-                    listener.onProgress(Step.DOWNLOADING, downloading,
-                            fraction < 0 ? -1 : Math.round(fraction * 100f));
+            if (!archiveValid(archive, release)) {
+                boolean ok = Downloader.downloadFile(release.url, archive, true, release.sha256, (fraction) -> {
+                    if (listener != null) {
+                        listener.onProgress(Step.DOWNLOADING, downloading,
+                                fraction < 0 ? -1 : Math.round(fraction * 100f));
+                    }
+                });
+                if (!ok) {
+                    Log.w(TAG, "download failed");
+                    keepPartial = true;
+                    return false;
                 }
-            });
-            if (!ok) {
-                Log.w(TAG, "download failed");
-                keepPartial = true;
-                return false;
+            } else if (listener != null) {
+                // Reuse the archive cached by a previous runtime install/update.
+                listener.onProgress(Step.DOWNLOADING, context.getString(R.string.rtinst_cached), 100);
             }
+            archive.setLastModified(System.currentTimeMillis());
 
             if (listener != null) listener.onProgress(Step.VERIFYING, context.getString(R.string.rtinst_verifying), -1);
             String actual = Hashes.sha256(archive);
             if (!release.sha256.equalsIgnoreCase(actual)) {
                 Log.w(TAG, "checksum mismatch: wanted " + release.sha256 + ", got " + actual);
+                archive.delete();
                 return false;
             }
 
@@ -447,12 +475,12 @@ public final class LinuxRuntimeInstaller {
             discard(old, null);
             try { com.droiddeck.launcher.session.SessionFiles.INSTANCE.stage(context, root, false); }
             catch (Exception e) { Log.w(TAG, "could not stage the session files into the new runtime", e); }
-            return LinuxRuntime.isInstalled(context);
+            return LinuxRuntime.hasRootfsAt(root);
         } catch (Exception e) {
             Log.e(TAG, "install", e);
             return false;
         } finally {
-            if (!keepPartial) archive.delete();
+            if (!keepPartial && !archive.isFile()) archive.delete();
         }
     }
 
