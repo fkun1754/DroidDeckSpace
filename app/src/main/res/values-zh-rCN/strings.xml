@@ -3700,4 +3700,12 @@
     <string name="runtime_mgr_detached">已从 DroidDeckSpace 移除，DroidSpaces 容器保留</string>
     <string name="runtime_mgr_restore_builtin">恢复内置运行时</string>
     <string name="runtime_mgr_not_installed_switch">该运行时未安装完成，请先修复或卸载。</string>
+
+    <string name="runtime_mgr_keep_cache">保留运行时缓存</string>
+    <string name="runtime_mgr_cache_days">缓存保留时间</string>
+    <string name="runtime_mgr_days">%1$d 天</string>
+    <string name="storage_runtime_cache">Linux 运行时缓存</string>
+    <string name="storage_runtime_cache_hint">已下载的运行时归档、桌面包以及 Steam 客户端/兼容层缓存</string>
+    <string name="storage_runtime_cache_clear">清理缓存</string>
+    <string name="storage_runtime_cache_empty">没有缓存文件</string>
 </resources>

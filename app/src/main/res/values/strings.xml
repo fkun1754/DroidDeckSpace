@@ -3888,4 +3888,12 @@
     <string name="runtime_mgr_detached">Detached from DroidDeckSpace; the DroidSpaces container is kept.</string>
     <string name="runtime_mgr_restore_builtin">Restore built-in runtime</string>
     <string name="runtime_mgr_not_installed_switch">This runtime is not installed; repair or remove it first.</string>
+
+    <string name="runtime_mgr_keep_cache">Keep runtime cache</string>
+    <string name="runtime_mgr_cache_days">Cache retention</string>
+    <string name="runtime_mgr_days">%1$d days</string>
+    <string name="storage_runtime_cache">Linux runtime cache</string>
+    <string name="storage_runtime_cache_hint">Downloaded runtime archives, desktop packages and the Steam client/compat seed</string>
+    <string name="storage_runtime_cache_clear">Clear cache</string>
+    <string name="storage_runtime_cache_empty">No cached runtime files</string>
 </resources>

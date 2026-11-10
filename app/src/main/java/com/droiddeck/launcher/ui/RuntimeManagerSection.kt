@@ -137,6 +137,26 @@ internal fun RuntimeManagerSection(
                     Text(stringResource(R.string.runtime_mgr_keep_running), fontSize = 14.sp, modifier = Modifier.weight(1f))
                     Switch(checked = keepRunning, onCheckedChange = { keepRunning = it; RuntimePrefs.setKeepRunning(ctx, it) })
                 }
+                var keepCache by remember { mutableStateOf(RuntimePrefs.cacheEnabled(ctx)) }
+                var cacheDays by remember { mutableStateOf(RuntimePrefs.cacheRetentionDays(ctx)) }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.runtime_mgr_keep_cache), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = keepCache, onCheckedChange = {
+                        keepCache = it
+                        RuntimePrefs.setCacheEnabled(ctx, it)
+                        if (!it) com.droiddeck.launcher.runtime.RuntimeCache.clear(ctx)
+                    })
+                }
+                if (keepCache) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.runtime_mgr_cache_days), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = {
+                            val options = listOf(3, 7, 14, 30)
+                            cacheDays = options[(options.indexOf(cacheDays).coerceAtLeast(0) + 1) % options.size]
+                            RuntimePrefs.setCacheRetentionDays(ctx, cacheDays)
+                        }) { Text(ctx.getString(R.string.runtime_mgr_days, cacheDays)) }
+                    }
+                }
                 if (working) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
                     Text(progress, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)

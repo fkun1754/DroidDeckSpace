@@ -7,6 +7,25 @@ object RuntimePrefs {
     private const val PREFS = "runtime_prefs"
     private const val KEY_RUN_AT_BOOT = "run_at_boot"
     private const val KEY_KEEP_RUNNING = "keep_running"
+    private const val KEY_CACHE = "cache_enabled"
+    private const val KEY_CACHE_DAYS = "cache_days"
+
+    /** Cache for runtime archives, desktop packages and the Steam/compat seed. */
+    fun cacheEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CACHE, true)
+
+    fun setCacheEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_CACHE, enabled).apply()
+    }
+
+    fun cacheRetentionDays(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_CACHE_DAYS, 7)
+
+    fun setCacheRetentionDays(context: Context, days: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_CACHE_DAYS, days.coerceIn(1, 90)).apply()
+    }
+
+    fun cacheRetentionMs(context: Context): Long = cacheRetentionDays(context) * 24L * 60L * 60L * 1000L
 
     fun runAtBoot(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_RUN_AT_BOOT, false)

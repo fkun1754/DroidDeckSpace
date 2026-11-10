@@ -65,8 +65,17 @@ object DesktopCatalog {
 
     fun pruneDownloads(context: Context) = synchronized(installLock) {
         val keep = interrupted(context).map { downloadFile(context, it).name }.toSet()
-        context.cacheDir.listFiles { f -> f.name.startsWith("pkg-") && f.name.removeSuffix(".resume.properties").endsWith(".download") }
-            ?.filter { it.name.removeSuffix(".resume.properties") !in keep }?.forEach { it.delete() }
+        if (!com.droiddeck.launcher.runtime.RuntimePrefs.cacheEnabled(context)) {
+            context.cacheDir.listFiles { f -> f.name.startsWith("pkg-") }?.forEach { it.delete() }
+            return@synchronized
+        }
+        val cutoff = System.currentTimeMillis() - com.droiddeck.launcher.runtime.RuntimePrefs.cacheRetentionMs(context)
+        context.cacheDir.listFiles { f -> f.name.startsWith("pkg-") && f.name.endsWith(".download") }
+            ?.filter { it.name !in keep }
+            ?.forEach { f ->
+                if (File(f.path + ".resume.properties").exists()) return@forEach
+                if (f.lastModified() < cutoff) f.delete()
+            }
     }
 
     fun resumeInterrupted(context: Context, listener: LinuxRuntimeInstaller.ProgressListener?): String? = synchronized(installLock) {
@@ -180,6 +189,7 @@ object DesktopCatalog {
         val download = downloadFile(context, entry)
         val journal = journal(root, entry.id)
         var keepDownload = false
+        var installedOk = false
         val release = RuntimeInstallService.holdForPackage(context, context.getString(R.string.deskpkg_installing, entry.name))
         val report = object : LinuxRuntimeInstaller.ProgressListener {
             override fun onProgress(stage: String, percent: Int) = onProgress(LinuxRuntimeInstaller.Step.OTHER, stage, percent)
@@ -237,12 +247,22 @@ object DesktopCatalog {
             check(installed(context, entry.id) == entry.version) { "Could not finish package installation" }
             check(!journal.exists() || journal.delete()) { "Could not finish package installation" }
             keepDownload = false
+            installedOk = true
             return null
         } catch (e: Exception) {
             Log.e(TAG, "install ${entry.id}", e)
             return e.message ?: context.getString(R.string.deskpkg_install_failed)
         } finally {
-            if (!keepDownload) download.delete()
+            if (!keepDownload) {
+                if (installedOk && com.droiddeck.launcher.runtime.RuntimePrefs.cacheEnabled(context)) {
+                    // Keep the verified archive so another runtime can install the desktop pack
+                    // without downloading ~1 GB again.
+                    download.setLastModified(System.currentTimeMillis())
+                } else {
+                    download.delete()
+                    File(download.path + ".resume.properties").delete()
+                }
+            }
             release()
         }
     }

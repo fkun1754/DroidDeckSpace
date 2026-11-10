@@ -44,8 +44,17 @@ object RuntimeSeedCache {
 
     fun clean(context: Context) {
         val seed = dir(context)
-        if (seed.isDirectory && System.currentTimeMillis() - seed.lastModified() > RETENTION_MS) {
+        if (!RuntimePrefs.cacheEnabled(context)) {
+            if (seed.isDirectory) {
+                SuShell.exec("rm -rf " + SuShell.quote(seed.absolutePath), 120_000)
+                seed.deleteRecursively()
+            }
+            return
+        }
+        val retention = RuntimePrefs.cacheRetentionMs(context)
+        if (seed.isDirectory && System.currentTimeMillis() - seed.lastModified() > retention) {
             Log.i(TAG, "removing expired runtime seed cache")
+            SuShell.exec("rm -rf " + SuShell.quote(seed.absolutePath), 120_000)
             seed.deleteRecursively()
         }
     }

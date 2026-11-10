@@ -310,6 +310,7 @@ private fun Overview(report: StorageReport, sessionRunning: Boolean, onCleanUp: 
         Note(stringResource(R.string.storage_session_running))
     }
     DefaultStorageGroup()
+    RuntimeCacheGroup()
     SectionTitle(stringResource(R.string.storage_where), null)
     val unused = report.unusedTools.sumOf { it.bytes }
     val tiles = listOf<@Composable (Modifier) -> Unit>(
@@ -363,6 +364,26 @@ private fun Overview(report: StorageReport, sessionRunning: Boolean, onCleanUp: 
                 repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
+    }
+}
+
+@Composable
+private fun RuntimeCacheGroup() {
+    val ctx = LocalContext.current
+    var revision by remember { mutableIntStateOf(0) }
+    val items = remember(revision) { com.droiddeck.launcher.runtime.RuntimeCache.items(ctx) }
+    val total = items.sumOf { it.bytes }
+    SettingsGroup(stringResource(R.string.storage_runtime_cache)) {
+        SettingsRow(label = stringResource(R.string.storage_runtime_cache), hint = stringResource(R.string.storage_runtime_cache_hint)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(com.droiddeck.launcher.runtime.RuntimeCache.human(total), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SecondaryButton(stringResource(R.string.storage_runtime_cache_clear), compact = true, enabled = total > 0) {
+                    revision++
+                    Thread({ com.droiddeck.launcher.runtime.RuntimeCache.clear(ctx) }, "runtime-cache-clear").start()
+                }
+            }
+        }
+        if (items.isEmpty()) SettingsRow(label = stringResource(R.string.storage_runtime_cache_empty), hint = null) {}
     }
 }
 

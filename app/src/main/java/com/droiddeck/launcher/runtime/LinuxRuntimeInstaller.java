@@ -124,18 +124,9 @@ public final class LinuxRuntimeInstaller {
     /** Keep a downloaded runtime archive around so creating several runtimes does not re-download it. */
     static final long ARCHIVE_RETENTION_MS = 7L * 24L * 60L * 60L * 1000L;
 
-    /** Deletes cached runtime archives older than [ARCHIVE_RETENTION_MS]. */
+    /** Applies the user's keep/retention settings to all runtime-related caches. */
     public static void cleanArchiveCache(Context context) {
-        File[] files = context.getCacheDir().listFiles((dir, name) ->
-                name.startsWith("linuxfs") && name.endsWith(".tar.zst"));
-        if (files == null) return;
-        long cutoff = System.currentTimeMillis() - ARCHIVE_RETENTION_MS;
-        for (File file : files) {
-            if (file.lastModified() < cutoff) {
-                Log.i(TAG, "removing expired runtime download " + file.getName());
-                file.delete();
-            }
-        }
+        com.droiddeck.launcher.runtime.RuntimeCache.INSTANCE.cleanExpired(context);
     }
 
     private static boolean archiveValid(File archive, Release release) {
