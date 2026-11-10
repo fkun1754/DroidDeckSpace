@@ -339,6 +339,9 @@ internal fun RuntimeManagerSection(
                             progress = ctx.getString(R.string.runtime_mgr_removing)
                             scope.launch {
                                 withContext(Dispatchers.IO) {
+                                    // Always stop the container first: deleting the rootfs of a
+                                    // running container leaves a zombie entry that cannot be removed.
+                                    runCatching { ContainerRuntime.stopContainer(ctx, entry.container) }
                                     RuntimeStore.remove(ctx, entry.container)
                                     deleteRuntimeFiles(File(entry.rootfs))
                                 }
@@ -353,6 +356,7 @@ internal fun RuntimeManagerSection(
                             progress = ctx.getString(R.string.runtime_mgr_removing)
                             scope.launch {
                                 withContext(Dispatchers.IO) {
+                                    runCatching { ContainerRuntime.stopContainer(ctx, entry.container) }
                                     RuntimeStore.remove(ctx, entry.container)
                                     ContainerRuntime.removeContainer(ctx, entry.container)
                                     deleteRuntimeFiles(File(entry.rootfs))

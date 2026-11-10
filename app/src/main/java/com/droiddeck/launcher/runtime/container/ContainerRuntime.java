@@ -443,7 +443,7 @@ public final class ContainerRuntime {
         }
     }
 
-    private static void stopContainer(Context context, String name) {
+    public static void stopContainer(Context context, String name) {
         if (DroidspacesCli.STOPPED.equals(DroidspacesCli.state(name))) return;
         ExecResult result = DroidspacesCli.stop(name);
         long deadline = System.currentTimeMillis() + STOP_TIMEOUT_MS;
