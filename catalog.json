@@ -3,23 +3,23 @@
   "sourceRepo": "fkun1754/DroidDeckSpace",
   "ciRepo": "fkun1754/DroidDeckSpace",
   "stable": {
-    "tag": "0.7.1",
-    "title": "DroidDeckSpace 0.7.1",
-    "summary": "Fix: hard-link the runtime's l2s utility chains so a fresh runtime boots in the container.",
-    "commit": "bb2ea63a2fa3c52f3e6dee715453137da382434e",
+    "tag": "0.7.2",
+    "title": "DroidDeckSpace 0.7.2",
+    "summary": "Runtime uninstall now also removes the matching DroidSpaces container (and orphaned records at start).",
+    "commit": "e5629640bfa4170b85cf3cad38c8b5f058760a72",
     "pr": 0,
-    "version": "0.7.1",
-    "versionCode": 19,
-    "publishedAt": 1794279243329,
-    "url": "https://github.com/fkun1754/DroidDeckSpace/releases/tag/0.7.1",
+    "version": "0.7.2",
+    "versionCode": 20,
+    "publishedAt": 1794280930796,
+    "url": "https://github.com/fkun1754/DroidDeckSpace/releases/tag/0.7.2",
     "apks": {
       "com.droiddeckspace.launcher": {
-        "name": "DroidDeckSpace-0.7.1.apk",
-        "url": "https://github.com/fkun1754/DroidDeckSpace/releases/download/0.7.1/DroidDeckSpace-0.7.1.apk",
+        "name": "DroidDeckSpace-0.7.2.apk",
+        "url": "https://github.com/fkun1754/DroidDeckSpace/releases/download/0.7.2/DroidDeckSpace-0.7.2.apk",
         "size": 103318975,
-        "sha256": "451006002c22e41a96d0685b43350e3cae2a880ca65d0ce41f223224370acd4d",
+        "sha256": "8dfe5687a7c409e85fe6f17b4e332235442391598f8ab279f2d6c85a648018d4",
         "packageName": "com.droiddeckspace.launcher",
-        "versionCode": 19,
+        "versionCode": 20,
         "signerSha256": "a40da80a59d170caa950cf15c18c454d47a39b26989d8b640ecd745ba71bf5dc"
       }
     }
@@ -27,5 +27,5 @@
   "preview": null,
   "tests": [],
   "recentPreviews": [],
-  "checkedAt": 1794279243329
+  "checkedAt": 1794280930796
 }
