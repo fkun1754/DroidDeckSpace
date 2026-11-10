@@ -85,7 +85,16 @@ public final class LinuxRuntimeInstaller {
         return LinuxRuntime.isInstalled(context) ? rootfsVersion(context) : null;
     }
 
+    /** Version of the active runtime (imported runtime or the built-in one). */
     private static String rootfsVersion(Context context) {
+        File marker = new File(LinuxRuntime.rootDir(context), VERSION_FILE);
+        if (!marker.isFile()) return null;
+        String v = FileUtils.readString(marker);
+        return v == null ? null : v.trim();
+    }
+
+    /** Version of the built-in runtime directory; only the official installer/uninstaller uses it. */
+    private static String defaultRootfsVersion(Context context) {
         File marker = new File(LinuxRuntime.defaultRootDir(context), VERSION_FILE);
         if (!marker.isFile()) return null;
         String v = FileUtils.readString(marker);
@@ -316,7 +325,7 @@ public final class LinuxRuntimeInstaller {
     }
 
     private static boolean packsOnly(Context context, Release release, ProgressListener listener) {
-        if (!LinuxRuntime.hasRootfs(context) || LinuxRuntime.isInstalled(context) || !release.version.equals(rootfsVersion(context))) return false;
+        if (!LinuxRuntime.hasRootfs(context) || LinuxRuntime.isInstalled(context) || !release.version.equals(defaultRootfsVersion(context))) return false;
         File root = LinuxRuntime.defaultRootDir(context);
         try {
             recoverInterruptedSwap(root, new File(root.getParentFile(), LinuxRuntime.DIR + ".new"), new File(root.getParentFile(), LinuxRuntime.DIR + ".old"));
