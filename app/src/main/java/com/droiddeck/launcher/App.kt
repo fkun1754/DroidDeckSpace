@@ -39,7 +39,10 @@ class App : Application() {
         if (process == "$packageName:vr_recovery" || process == "$packageName:rgb_diagnostic" ||
             process == "$packageName:shortcuts_sync" || process == "$packageName:bottom_desktop") return
         com.droiddeck.launcher.runtime.RuntimeStatus.load(this)
-        Thread({ runCatching { com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.cleanArchiveCache(this) } }, "runtime-cache-cleanup").start()
+        Thread({
+            runCatching { com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.cleanArchiveCache(this) }
+            runCatching { com.droiddeck.launcher.runtime.RuntimeSeedCache.clean(this) }
+        }, "runtime-cache-cleanup").start()
         CrashHandler.install(this)
         Thread({
             runCatching {

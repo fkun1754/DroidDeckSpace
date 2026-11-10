@@ -8,10 +8,17 @@ import java.io.File
 object RuntimeDiscovery {
     data class Container(val name: String, val rootfs: String)
 
-    fun list(context: Context): List<Container> {
+    private const val CACHE_MS = 30_000L
+    private var cached: List<Container>? = null
+    private var cachedAt = 0L
+
+    fun list(context: Context, force: Boolean = false): List<Container> {
+        val now = System.currentTimeMillis()
+        cached?.let { if (!force && now - cachedAt < CACHE_MS) return it }
         val result = SuShell.exec(
             "for c in /data/local/Droidspaces/Containers/*/container.config; do " +
-                "[ -f \"\$c\" ] || continue; echo __DS__\$c; cat \"\$c\"; done",
+                "[ -f \"\$c\" ] || continue; echo __DS__\$c; " +
+                "grep -E '^(name|rootfs_path)=' \"\$c\" 2>/dev/null; done",
             20_000,
         )
         if (!result.ok()) return emptyList()
@@ -32,7 +39,10 @@ object RuntimeDiscovery {
             }
         }
         flush()
-        return containers.filter { it.name.isNotBlank() && File(it.rootfs).isDirectory }
+        val resultList = containers.filter { it.name.isNotBlank() && File(it.rootfs).isDirectory }
+        cached = resultList
+        cachedAt = now
+        return resultList
     }
 
     /** null when the container can be imported, otherwise a human-readable reason. */

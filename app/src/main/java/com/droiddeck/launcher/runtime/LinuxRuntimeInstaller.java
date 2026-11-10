@@ -174,7 +174,10 @@ public final class LinuxRuntimeInstaller {
                 return true;
             }
             job.ok = installOnce(app, release, LinuxRuntime.defaultRootDir(app), progress);
-            if (job.ok && desktop) keepDesktop(app, progress);
+            if (job.ok) {
+                com.droiddeck.launcher.runtime.RuntimeSeedCache.INSTANCE.capture(app, LinuxRuntime.defaultRootDir(app));
+                if (desktop) keepDesktop(app, progress);
+            }
             return job.ok;
         } finally {
             synchronized (JOB_LOCK) {
@@ -362,7 +365,9 @@ public final class LinuxRuntimeInstaller {
                     for (ProgressListener l : job.listeners) l.onProgress(step, stage, percent);
                 }
             };
+            com.droiddeck.launcher.runtime.RuntimeSeedCache.INSTANCE.capture(app, LinuxRuntime.rootDir(app));
             job.ok = installOnce(app, release, targetRoot, progress);
+            if (job.ok) com.droiddeck.launcher.runtime.RuntimeSeedCache.INSTANCE.apply(app, targetRoot);
             return job.ok;
         } finally {
             synchronized (JOB_LOCK) {

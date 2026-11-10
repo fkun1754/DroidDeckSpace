@@ -3652,7 +3652,7 @@
 
     <string name="runtime_mgr_not_imported">尚未导入运行时</string>
     <string name="runtime_mgr_hint">可导入已有 DroidSpaces 容器，或新建运行时</string>
-    <string name="runtime_mgr_manage">管理</string>
+    <string name="runtime_mgr_manage">Linux 容器管理</string>
     <string name="runtime_mgr_import">导入 DroidSpaces 容器</string>
     <string name="runtime_mgr_new">新建运行时</string>
     <string name="runtime_mgr_remove">卸载运行时</string>
@@ -3672,4 +3672,16 @@
     <string name="setup_container_detecting_detail">正在自动检测运行环境，首次启动可能需要几秒钟。</string>
 
     <string name="rtinst_cached">使用已缓存的运行时下载</string>
+
+    <string name="runtime_default_label">运行时</string>
+    <string name="runtime_mgr_update">修复 / 更新</string>
+    <string name="runtime_mgr_uninstall_short">卸载</string>
+    <string name="runtime_mgr_scanning">正在扫描 DroidSpaces 容器…</string>
+    <string name="runtime_mgr_checking">正在检查兼容性…</string>
+    <string name="runtime_mgr_rename">重命名运行时</string>
+    <string name="runtime_mgr_rename_hint">新的运行时名称</string>
+    <string name="runtime_mgr_rename_save">保存</string>
+
+    <string name="runtime_mgr_run_at_boot">开机运行</string>
+    <string name="runtime_mgr_keep_running">保持后台运行</string>
 </resources>

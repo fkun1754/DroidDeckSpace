@@ -3840,7 +3840,7 @@
 
     <string name="runtime_mgr_not_imported">No runtime imported</string>
     <string name="runtime_mgr_hint">Import a DroidSpaces container or create a new runtime</string>
-    <string name="runtime_mgr_manage">Manage</string>
+    <string name="runtime_mgr_manage">Linux container management</string>
     <string name="runtime_mgr_import">Import DroidSpaces container</string>
     <string name="runtime_mgr_new">New runtime</string>
     <string name="runtime_mgr_remove">Remove runtime</string>
@@ -3860,4 +3860,16 @@
     <string name="setup_container_detecting_detail">Detecting the runtime environment. This can take a few seconds on the first launch.</string>
 
     <string name="rtinst_cached">Using the cached runtime download</string>
+
+    <string name="runtime_default_label">Runtime</string>
+    <string name="runtime_mgr_update">Repair / Update</string>
+    <string name="runtime_mgr_uninstall_short">Remove</string>
+    <string name="runtime_mgr_scanning">Scanning DroidSpaces containers…</string>
+    <string name="runtime_mgr_checking">Checking compatibility…</string>
+    <string name="runtime_mgr_rename">Rename runtime</string>
+    <string name="runtime_mgr_rename_hint">New runtime name</string>
+    <string name="runtime_mgr_rename_save">Save</string>
+
+    <string name="runtime_mgr_run_at_boot">Run at boot</string>
+    <string name="runtime_mgr_keep_running">Keep running in background</string>
 </resources>

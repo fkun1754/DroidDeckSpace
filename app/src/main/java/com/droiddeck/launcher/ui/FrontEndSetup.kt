@@ -51,6 +51,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import java.io.File
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -88,6 +90,8 @@ import com.droiddeck.launcher.core.PhantomProcessStatus
 import com.droiddeck.launcher.session.SessionPrefs
 import com.droiddeck.launcher.stores.download.StoreDownloadTier
 import com.droiddeck.launcher.R
+import com.droiddeck.launcher.runtime.RuntimeStore
+import com.droiddeck.launcher.runtime.LinuxRuntime
 
 
 private enum class CheckState { OK, WARN, BUSY }
@@ -420,8 +424,32 @@ internal fun SetupPanel(
                         var containerRootOk by remember { mutableStateOf(if (com.droiddeck.launcher.runtime.RuntimeStatus.checked) com.droiddeck.launcher.runtime.RuntimeStatus.root else null) }
                         var containerCliOk by remember { mutableStateOf(if (com.droiddeck.launcher.runtime.RuntimeStatus.checked) com.droiddeck.launcher.runtime.RuntimeStatus.droidspaces else null) }
                         var containerRechecking by remember { mutableStateOf(false) }
-                        val containerChecking = containerRootOk == null || containerCliOk == null || containerRechecking
+                        var showRuntimeManager by remember { mutableStateOf(false) }
+                        var showRemoveRuntime by remember { mutableStateOf(false) }
                         val containerScope = rememberCoroutineScope()
+                        val updateActiveRuntime: () -> Unit = {
+                            if (!s.busy && !s.sessionRunning) {
+                                containerScope.launch {
+                                    val release = withContext(Dispatchers.IO) { com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.fetchRelease() }
+                                    if (release == null) {
+                                        android.widget.Toast.makeText(containerCtx, "无法获取运行时版本", android.widget.Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val entry = com.droiddeck.launcher.runtime.RuntimeStore.active(containerCtx)
+                                        withContext(Dispatchers.IO) {
+                                            if (entry?.builtin == true || entry == null) {
+                                                com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.install(containerCtx, release, null)
+                                            } else {
+                                                com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.installTo(
+                                                    containerCtx, release, File(entry.rootfs), null,
+                                                )
+                                            }
+                                        }
+                                        android.widget.Toast.makeText(containerCtx, "运行时已更新", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        }
+                        val containerChecking = containerRootOk == null || containerCliOk == null || containerRechecking
                         val recheckContainer: () -> Unit = {
                             if (!containerRechecking) {
                                 containerRechecking = true
@@ -490,7 +518,9 @@ internal fun SetupPanel(
                                 stringResource(if (checking) R.string.setup_container_detecting_detail else R.string.setup_container_root_detail),
                                 action = {
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        SecondaryButton(stringResource(R.string.setup_container_grant), compact = true, enabled = !checking, onClick = openSuManager)
+                                        if (containerRootOk != true) {
+                                            SecondaryButton(stringResource(R.string.setup_container_grant), compact = true, enabled = !checking, onClick = openSuManager)
+                                        }
                                         SecondaryButton(stringResource(R.string.setup_container_recheck), compact = true, enabled = !checking, onClick = recheckContainer)
                                     }
                                 },
@@ -518,8 +548,70 @@ internal fun SetupPanel(
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                             )
                             if (!checking) {
-                                runtimeCheck(false)
-                                RuntimeManagerSection(busy = s.busy, sessionRunning = s.sessionRunning)
+                                CheckRow(
+                                    if (LinuxRuntime.isInstalled(containerCtx)) CheckState.OK else CheckState.WARN,
+                                    stringResource(R.string.setup_runtime),
+                                    if (LinuxRuntime.isInstalled(containerCtx)) {
+                                        (RuntimeStore.active(containerCtx)?.label ?: stringResource(R.string.setup_installed)) + " · " +
+                                            (s.installed ?: stringResource(R.string.setup_check_done))
+                                    } else stringResource(R.string.setup_runtime_missing),
+                                    action = {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            SecondaryButton(
+                                                stringResource(R.string.runtime_mgr_manage),
+                                                compact = true,
+                                                enabled = !s.busy && !s.runtimeActionsBlocked && !s.sessionRunning,
+                                            ) { showRuntimeManager = true }
+                                            if (LinuxRuntime.isInstalled(containerCtx)) {
+                                                SecondaryButton(stringResource(R.string.runtime_mgr_update), compact = true, enabled = !s.busy && !s.sessionRunning) { updateActiveRuntime() }
+                                                SecondaryButton(stringResource(R.string.runtime_mgr_uninstall_short), compact = true, enabled = !s.busy && !s.sessionRunning) { showRemoveRuntime = true }
+                                            }
+                                        }
+                                    },
+                                )
+                                RuntimeManagerSection(
+                                    show = showRuntimeManager,
+                                    onDismiss = { showRuntimeManager = false },
+                                    busy = s.busy,
+                                    sessionRunning = s.sessionRunning,
+                                )
+                            }
+                            if (showRemoveRuntime) {
+                                val entry = com.droiddeck.launcher.runtime.RuntimeStore.active(containerCtx)
+                                androidx.compose.material3.AlertDialog(
+                                    onDismissRequest = { showRemoveRuntime = false },
+                                    title = { Text(stringResource(R.string.runtime_mgr_remove)) },
+                                    text = {
+                                        Column {
+                                            Text(stringResource(R.string.runtime_mgr_remove_hint), fontSize = 13.sp)
+                                            TextButton(onClick = {
+                                                showRemoveRuntime = false
+                                                containerScope.launch {
+                                                    withContext(Dispatchers.IO) {
+                                                        entry?.let {
+                                                            com.droiddeck.launcher.runtime.RuntimeStore.remove(containerCtx, it.container)
+                                                            if (it.builtin) File(it.rootfs).deleteRecursively()
+                                                        }
+                                                    }
+                                                }
+                                            }) { Text(stringResource(R.string.runtime_mgr_remove_app)) }
+                                            TextButton(onClick = {
+                                                showRemoveRuntime = false
+                                                containerScope.launch {
+                                                    withContext(Dispatchers.IO) {
+                                                        entry?.let {
+                                                            com.droiddeck.launcher.runtime.RuntimeStore.remove(containerCtx, it.container)
+                                                            com.droiddeck.launcher.runtime.container.ContainerRuntime.removeContainer(containerCtx, it.container)
+                                                            val root = File(it.rootfs)
+                                                            if (root.path.startsWith(containerCtx.filesDir.path)) root.deleteRecursively()
+                                                        }
+                                                    }
+                                                }
+                                            }) { Text(stringResource(R.string.runtime_mgr_remove_both)) }
+                                        }
+                                    },
+                                    confirmButton = { TextButton(onClick = { showRemoveRuntime = false }) { Text(stringResource(R.string.common_cancel)) } },
+                                )
                             }
                         }
                         SteamIntegrationGroup(s.integration, s.integrationFocus, a.onIntegration, a.onIntegrationAppInfo, a.onIntegrationLocation)

@@ -27,7 +27,7 @@ object RuntimeStore {
 
     fun defaultEntry(context: Context): Entry = Entry(
         container = ContainerPaths.defaultContainerName(),
-        label = "DroidDeckSpace Runtime",
+        label = context.getString(com.droiddeck.launcher.R.string.runtime_default_label),
         rootfs = LinuxRuntime.defaultRootDir(context).path,
         imported = false,
         builtin = true,
@@ -35,7 +35,14 @@ object RuntimeStore {
 
     fun entries(context: Context): List<Entry> {
         val stored = read(context)
-        if (stored.isNotEmpty()) return stored
+        if (stored.isNotEmpty()) {
+            val base = context.getString(com.droiddeck.launcher.R.string.runtime_default_label)
+            val migrated = stored.map {
+                if (it.label == "DroidDeckSpace Runtime") it.copy(label = base) else it
+            }
+            if (migrated != stored) write(context, migrated)
+            return migrated
+        }
         return if (LinuxRuntime.hasRootfsAt(LinuxRuntime.defaultRootDir(context))) listOf(defaultEntry(context)) else emptyList()
     }
 
@@ -60,6 +67,15 @@ object RuntimeStore {
         if (activate) setActive(context, entry.container)
     }
 
+    fun rename(context: Context, container: String, label: String) {
+        val trimmed = label.trim()
+        if (trimmed.isEmpty()) return
+        val list = entries(context).map {
+            if (it.container == container) it.copy(label = trimmed) else it
+        }
+        write(context, list)
+    }
+
     fun remove(context: Context, container: String) {
         val list = entries(context).filter { it.container != container }
         write(context, list)
@@ -69,7 +85,7 @@ object RuntimeStore {
     }
 
     fun nextLabel(context: Context, taken: Collection<String>): String {
-        val base = "DroidDeckSpace Runtime"
+        val base = context.getString(com.droiddeck.launcher.R.string.runtime_default_label)
         val names = entries(context).map { it.label }.toMutableSet()
         names.addAll(taken)
         if (base !in names) return base

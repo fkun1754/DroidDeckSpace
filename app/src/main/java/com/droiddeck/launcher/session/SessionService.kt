@@ -1448,7 +1448,13 @@ class SessionService : Service() {
             .isSuccess
         if (!stopped || !waitForContainerExit(session, CONTAINER_STOP_MS)) {
             Log.w(TAG, "container ${session.name()} did not stop; retrying once")
-            runCatching { ContainerRuntime.stop(this) }
+            runCatching {
+                if (com.droiddeck.launcher.runtime.RuntimePrefs.keepRunning(this)) {
+                    ContainerRuntime.startMaintenance(this)
+                } else {
+                    ContainerRuntime.stop(this)
+                }
+            }
                 .onFailure { Log.w(TAG, "could not stop the container runtime", it) }
             stopped = waitForContainerExit(session, CONTAINER_STOP_MS)
         }
@@ -1644,7 +1650,13 @@ class SessionService : Service() {
             Log.i(TAG, "a maintenance container is running (an install is in progress); not stopping it here")
             return
         }
-        runCatching { ContainerRuntime.stop(this) }
+        runCatching {
+                if (com.droiddeck.launcher.runtime.RuntimePrefs.keepRunning(this)) {
+                    ContainerRuntime.startMaintenance(this)
+                } else {
+                    ContainerRuntime.stop(this)
+                }
+            }
             .onFailure { Log.w(TAG, "could not stop a residual container", it) }
     }
 
