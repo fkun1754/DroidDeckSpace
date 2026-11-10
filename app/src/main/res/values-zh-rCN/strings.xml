@@ -3699,4 +3699,5 @@
     <string name="runtime_mgr_removing">正在卸载运行时…</string>
     <string name="runtime_mgr_detached">已从 DroidDeckSpace 移除，DroidSpaces 容器保留</string>
     <string name="runtime_mgr_restore_builtin">恢复内置运行时</string>
+    <string name="runtime_mgr_not_installed_switch">该运行时未安装完成，请先修复或卸载。</string>
 </resources>

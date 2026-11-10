@@ -3887,4 +3887,5 @@
     <string name="runtime_mgr_removing">Removing the runtime…</string>
     <string name="runtime_mgr_detached">Detached from DroidDeckSpace; the DroidSpaces container is kept.</string>
     <string name="runtime_mgr_restore_builtin">Restore built-in runtime</string>
+    <string name="runtime_mgr_not_installed_switch">This runtime is not installed; repair or remove it first.</string>
 </resources>

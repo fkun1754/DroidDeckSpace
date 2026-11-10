@@ -76,9 +76,14 @@ object RuntimeStore {
 
     fun active(context: Context): Entry? {
         val id = prefs(context).getString(KEY_ACTIVE, null)
-        val entries = entries(context)
-        if (id != null) entries.firstOrNull { it.container == id }?.let { return it }
-        return entries.firstOrNull { it.builtin }
+        val all = entries(context)
+        val selected = id?.let { key -> all.firstOrNull { it.container == key } }
+        // A runtime whose rootfs was removed/incomplete must never be used for a session: it would
+        // trigger a runtime install on every start. Fall back to the built-in runtime when it is valid.
+        if (selected != null && LinuxRuntime.hasRootfsAt(File(selected.rootfs))) return selected
+        val builtin = all.firstOrNull { it.builtin && LinuxRuntime.hasRootfsAt(File(it.rootfs)) }
+        if (builtin != null) return builtin
+        return selected ?: all.firstOrNull()
     }
 
     fun activeRootfs(context: Context): File =
