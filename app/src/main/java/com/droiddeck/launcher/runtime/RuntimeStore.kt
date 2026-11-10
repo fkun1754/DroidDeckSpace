@@ -17,6 +17,7 @@ object RuntimeStore {
     private const val PREFS = "runtime_store"
     private const val KEY_ENTRIES = "entries"
     private const val KEY_ACTIVE = "active"
+    private const val KEY_HIDDEN = "hidden"
 
     /** DroidSpaces accepts letters, numbers, '.', '_', '-' and spaces. */
     private val NAME = Regex("^[A-Za-z0-9._ -]{1,40}$")
@@ -37,12 +38,40 @@ object RuntimeStore {
     }
 
     fun entries(context: Context): List<Entry> {
-        val stored = read(context).toMutableList()
+        val hidden = hiddenContainers(context)
+        val stored = read(context).filter { it.container !in hidden }.toMutableList()
         if (LinuxRuntime.hasRootfsAt(LinuxRuntime.defaultRootDir(context))) {
             val builtin = defaultEntry(context)
-            if (stored.none { it.container == builtin.container }) stored.add(0, builtin)
+            if (stored.none { it.container == builtin.container } && builtin.container !in hidden) stored.add(0, builtin)
         }
         return stored
+    }
+
+    /** Names detached from DroidDeckSpace but still present in DroidSpaces. */
+    fun hiddenContainers(context: Context): Set<String> {
+        val raw = prefs(context).getString(KEY_HIDDEN, null) ?: return emptySet()
+        return runCatching {
+            val array = org.json.JSONArray(raw)
+            (0 until array.length()).map { array.getString(it) }.toSet()
+        }.getOrDefault(emptySet())
+    }
+
+    /** Detach a runtime from DroidDeckSpace without touching its DroidSpaces container/rootfs. */
+    fun hide(context: Context, container: String) {
+        val hidden = hiddenContainers(context).toMutableSet()
+        hidden.add(container)
+        val array = org.json.JSONArray()
+        hidden.forEach { array.put(it) }
+        prefs(context).edit().putString(KEY_HIDDEN, array.toString()).apply()
+        if (prefs(context).getString(KEY_ACTIVE, null) == container) prefs(context).edit().remove(KEY_ACTIVE).apply()
+    }
+
+    fun unhide(context: Context, container: String) {
+        val hidden = hiddenContainers(context).toMutableSet()
+        hidden.remove(container)
+        val array = org.json.JSONArray()
+        hidden.forEach { array.put(it) }
+        prefs(context).edit().putString(KEY_HIDDEN, array.toString()).apply()
     }
 
     fun active(context: Context): Entry? {
@@ -60,7 +89,8 @@ object RuntimeStore {
     }
 
     fun add(context: Context, entry: Entry, activate: Boolean) {
-        val list = entries(context).filter { it.container != entry.container }.toMutableList()
+        unhide(context, entry.container)
+        val list = read(context).filter { it.container != entry.container }.toMutableList()
         list.add(entry)
         write(context, list)
         if (activate) setActive(context, entry.container)

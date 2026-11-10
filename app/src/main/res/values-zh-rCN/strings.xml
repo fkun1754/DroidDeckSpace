@@ -3697,4 +3697,6 @@
     <string name="runtime_mgr_name_taken">该名称已被使用</string>
     <string name="runtime_mgr_busy_title">正在处理…</string>
     <string name="runtime_mgr_removing">正在卸载运行时…</string>
+    <string name="runtime_mgr_detached">已从 DroidDeckSpace 移除，DroidSpaces 容器保留</string>
+    <string name="runtime_mgr_restore_builtin">恢复内置运行时</string>
 </resources>

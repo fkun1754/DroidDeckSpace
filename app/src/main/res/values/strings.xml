@@ -3885,4 +3885,6 @@
     <string name="runtime_mgr_name_taken">This name is already in use</string>
     <string name="runtime_mgr_busy_title">Working…</string>
     <string name="runtime_mgr_removing">Removing the runtime…</string>
+    <string name="runtime_mgr_detached">Detached from DroidDeckSpace; the DroidSpaces container is kept.</string>
+    <string name="runtime_mgr_restore_builtin">Restore built-in runtime</string>
 </resources>

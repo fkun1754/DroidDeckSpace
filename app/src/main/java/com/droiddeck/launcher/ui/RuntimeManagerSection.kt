@@ -174,6 +174,15 @@ internal fun RuntimeManagerSection(
                     TextButton(enabled = !working, onClick = { sub = "import" }) { Text(stringResource(R.string.runtime_mgr_import)) }
                     TextButton(enabled = !working, onClick = { sub = "new" }) { Text(stringResource(R.string.runtime_mgr_new)) }
                 }
+                val hiddenBuiltin = com.droiddeck.launcher.runtime.container.ContainerPaths.defaultContainerName() in
+                    RuntimeStore.hiddenContainers(ctx) && LinuxRuntime.hasRootfsAt(
+                    com.droiddeck.launcher.runtime.LinuxRuntime.defaultRootDir(ctx))
+                if (hiddenBuiltin) {
+                    TextButton(enabled = !working, onClick = {
+                        RuntimeStore.unhide(ctx, com.droiddeck.launcher.runtime.container.ContainerPaths.defaultContainerName())
+                        refresh(); onChanged()
+                    }) { Text(stringResource(R.string.runtime_mgr_restore_builtin)) }
+                }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
@@ -216,8 +225,7 @@ internal fun RuntimeManagerSection(
         var containers by remember(sub) { mutableStateOf<List<RuntimeDiscovery.Container>?>(null) }
         var checking by remember(sub) { mutableStateOf(false) }
         LaunchedEffect(sub) {
-            val imported = RuntimeStore.entries(ctx).map { it.container }.toSet() +
-                com.droiddeck.launcher.runtime.container.ContainerPaths.defaultContainerName()
+            val imported = RuntimeStore.entries(ctx).map { it.container }.toSet()
             containers = withContext(Dispatchers.IO) { RuntimeDiscovery.list(ctx, true).filter { it.name !in imported } }
         }
         AlertDialog(
@@ -335,20 +343,12 @@ internal fun RuntimeManagerSection(
                     active?.let { entry ->
                         TextButton(onClick = {
                             sub = null
-                            working = true
-                            progress = ctx.getString(R.string.runtime_mgr_removing)
-                            scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    // Always stop the container first: deleting the rootfs of a
-                                    // running container leaves a zombie entry that cannot be removed.
-                                    runCatching { ContainerRuntime.stopContainer(ctx, entry.container) }
-                                    RuntimeStore.remove(ctx, entry.container)
-                                    deleteRuntimeFiles(File(entry.rootfs))
-                                }
-                                working = false
-                                refresh()
-                                onChanged()
-                            }
+                            // Detach from DroidDeckSpace only: keep the DroidSpaces container and
+                            // its rootfs intact so it can still be used/managed in DroidSpaces.
+                            RuntimeStore.hide(ctx, entry.container)
+                            message = ctx.getString(R.string.runtime_mgr_detached)
+                            refresh()
+                            onChanged()
                         }) { Text(stringResource(R.string.runtime_mgr_remove_app)) }
                         TextButton(onClick = {
                             sub = null
