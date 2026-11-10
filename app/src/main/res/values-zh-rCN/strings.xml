@@ -3708,4 +3708,5 @@
     <string name="storage_runtime_cache_hint">已下载的运行时归档、桌面包以及 Steam 客户端/兼容层缓存</string>
     <string name="storage_runtime_cache_clear">清理缓存</string>
     <string name="storage_runtime_cache_empty">没有缓存文件</string>
+    <string name="runtime_mgr_days_forever">永久</string>
 </resources>

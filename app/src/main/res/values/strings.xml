@@ -3896,4 +3896,5 @@
     <string name="storage_runtime_cache_hint">Downloaded runtime archives, desktop packages and the Steam client/compat seed</string>
     <string name="storage_runtime_cache_clear">Clear cache</string>
     <string name="storage_runtime_cache_empty">No cached runtime files</string>
+    <string name="runtime_mgr_days_forever">Forever</string>
 </resources>

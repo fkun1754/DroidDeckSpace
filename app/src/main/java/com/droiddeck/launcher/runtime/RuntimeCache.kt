@@ -53,10 +53,12 @@ object RuntimeCache {
             clear(context)
             return
         }
-        val cutoff = System.currentTimeMillis() - RuntimePrefs.cacheRetentionMs(context)
-        items(context).filter { it.kind != Kind.SEED && it.file.lastModified() < cutoff }
-            .filterNot { it.kind == Kind.DESKTOP && File(it.file.path + ".resume.properties").exists() }
-            .forEach { it.file.delete() }
+        if (!RuntimePrefs.cacheKeepsForever(context)) {
+            val cutoff = System.currentTimeMillis() - RuntimePrefs.cacheRetentionMs(context)
+            items(context).filter { it.kind != Kind.SEED && it.file.lastModified() < cutoff }
+                .filterNot { it.kind == Kind.DESKTOP && File(it.file.path + ".resume.properties").exists() }
+                .forEach { it.file.delete() }
+        }
         RuntimeSeedCache.clean(context)
     }
 

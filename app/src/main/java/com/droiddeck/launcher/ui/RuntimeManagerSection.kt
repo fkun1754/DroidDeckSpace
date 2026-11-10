@@ -151,10 +151,15 @@ internal fun RuntimeManagerSection(
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.runtime_mgr_cache_days), fontSize = 14.sp, modifier = Modifier.weight(1f))
                         TextButton(onClick = {
-                            val options = listOf(3, 7, 14, 30)
+                            val options = listOf(3, 7, 14, 30, 0)
                             cacheDays = options[(options.indexOf(cacheDays).coerceAtLeast(0) + 1) % options.size]
                             RuntimePrefs.setCacheRetentionDays(ctx, cacheDays)
-                        }) { Text(ctx.getString(R.string.runtime_mgr_days, cacheDays)) }
+                        }) {
+                            Text(
+                                if (cacheDays <= 0) stringResource(R.string.runtime_mgr_days_forever)
+                                else ctx.getString(R.string.runtime_mgr_days, cacheDays)
+                            )
+                        }
                     }
                 }
                 if (working) {

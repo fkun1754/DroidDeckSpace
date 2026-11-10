@@ -21,11 +21,17 @@ object RuntimePrefs {
     fun cacheRetentionDays(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_CACHE_DAYS, 7)
 
+    /** 0 or a negative value means "keep forever". */
     fun setCacheRetentionDays(context: Context, days: Int) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_CACHE_DAYS, days.coerceIn(1, 90)).apply()
+        val value = if (days <= 0) 0 else days.coerceIn(1, 90)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_CACHE_DAYS, value).apply()
     }
 
-    fun cacheRetentionMs(context: Context): Long = cacheRetentionDays(context) * 24L * 60L * 60L * 1000L
+    fun cacheKeepsForever(context: Context): Boolean = cacheRetentionDays(context) <= 0
+
+    fun cacheRetentionMs(context: Context): Long =
+        if (cacheKeepsForever(context)) Long.MAX_VALUE
+        else cacheRetentionDays(context) * 24L * 60L * 60L * 1000L
 
     fun runAtBoot(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_RUN_AT_BOOT, false)
