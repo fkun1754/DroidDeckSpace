@@ -78,3 +78,12 @@ translation layer hides this, but a plain container sees the payload name and ev
 payload, so the executable name matches `argv[0]`. It runs after a runtime install and once per
 rootfs at session preparation (marker `.droiddeck-l2s-hardlinks`), which also repairs runtimes
 installed before the fix.
+
+## Runtime removal
+
+Removing the Linux runtime in the app also unregisters its DroidSpaces container. DroidSpaces has
+no CLI delete command, so `ContainerRuntime.removeContainers` performs the host-side equivalent of
+its "Uninstall Container" action: stop the container (current and legacy names), then delete
+`/data/local/Droidspaces/{Containers,Logs,Pids}` entries for those names and for any
+`droiddeck.com.droiddeck.*` leftovers from earlier package ids. Without this the container list
+keeps a dead entry pointing at a rootfs that no longer exists.

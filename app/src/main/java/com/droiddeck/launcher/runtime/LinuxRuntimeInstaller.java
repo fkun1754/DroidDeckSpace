@@ -522,6 +522,15 @@ public final class LinuxRuntimeInstaller {
             if (listener != null) job.listeners.add(listener);
             try {
                 requireStopped();
+                // The container points at this rootfs; unregister it together with the runtime so
+                // DroidSpaces does not keep a dead container entry around.
+                if (app != null) {
+                    try {
+                        com.droiddeck.launcher.runtime.container.ContainerRuntime.removeContainers(app);
+                    } catch (Exception e) {
+                        Log.w(TAG, "container cleanup failed", e);
+                    }
+                }
                 report(text(app, R.string.rtinst_removing), -1);
                 final long[] removed = {0};
                 final long[] lastShown = {0};

@@ -45,6 +45,46 @@ public final class ContainerRuntime {
         }
     }
 
+    /**
+     * Removes the DroidSpaces container records this app owns (runtime uninstall). DroidSpaces has no
+     * CLI delete command, so this is the host-side equivalent of its "Uninstall Container" action:
+     * stop the container, then drop its registry entry, logs and pidfile. Legacy names from earlier
+     * package ids are cleaned too, because re-installing under a new id must not leave orphaned
+     * containers that point at a deleted rootfs.
+     */
+    public static void removeContainers(Context context) {
+        java.util.List<String> names = new java.util.ArrayList<>();
+        names.add(ContainerPaths.CONTAINER_NAME);
+        names.add("droiddeck.com.droiddeck.launcher.droidspace");
+        names.add("droiddeck.com.droiddeck.launcher");
+        names.add(ContainerPaths.LEGACY_CONTAINER_NAME);
+        if (DroidspacesCli.installed()) {
+            for (String name : names) {
+                try {
+                    DroidspacesCli.stop(name);
+                } catch (Exception e) {
+                    Log.w(TAG, "could not stop container " + name + ": " + e);
+                }
+            }
+        }
+        StringBuilder command = new StringBuilder();
+        for (String name : names) {
+            command.append("rm -rf ")
+                    .append(ContainerPaths.WORKSPACE).append("/Containers/").append(name).append(' ')
+                    .append(ContainerPaths.WORKSPACE).append("/Logs/").append(name).append(' ')
+                    .append(ContainerPaths.WORKSPACE).append("/Pids/").append(name).append(".pid; ");
+        }
+        // Older builds registered droiddeck.* containers under their own package ids.
+        command.append("for d in ")
+                .append(ContainerPaths.WORKSPACE).append("/Containers/droiddeck.com.droiddeck.* ")
+                .append(ContainerPaths.WORKSPACE).append("/Logs/droiddeck.com.droiddeck.*; do ")
+                .append("[ -e \"$d\" ] && rm -rf \"$d\"; done; ");
+        ExecResult result = SuShell.exec(command.toString(), 30_000);
+        if (!result.ok()) Log.w(TAG, "container cleanup exited " + result.exitCode + ": " + result.combined());
+        forget();
+        DroidspacesCli.forget();
+    }
+
     public static void forget() {
         available = null;
         SuShell.forget();

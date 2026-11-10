@@ -16,7 +16,7 @@ boots as a real [DroidSpaces](https://github.com/ravindu644/Droidspaces-OSS) con
 phone's own kernel, supervised by the app through root.
 
 <p align="center">
-  <a href="https://github.com/fkun1754/DroidDeckSpace/releases/latest"><img src="https://img.shields.io/badge/Download-DroidDeckSpace%200.7.1%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download DroidDeckSpace 0.7.1"></a>
+  <a href="https://github.com/fkun1754/DroidDeckSpace/releases/latest"><img src="https://img.shields.io/badge/Download-DroidDeckSpace%200.7.2%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Download DroidDeckSpace 0.7.2"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue?style=for-the-badge" alt="License GPLv3"></a>
   <a href="https://github.com/Droid-Deck/DroidDeck"><img src="https://img.shields.io/badge/Based%20on-DroidDeck-5865F2?style=for-the-badge" alt="Based on DroidDeck"></a>
 </p>
