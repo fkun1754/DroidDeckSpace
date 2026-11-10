@@ -38,6 +38,7 @@ class App : Application() {
         }
         if (process == "$packageName:vr_recovery" || process == "$packageName:rgb_diagnostic" ||
             process == "$packageName:shortcuts_sync" || process == "$packageName:bottom_desktop") return
+        com.droiddeck.launcher.runtime.RuntimePrefs.ensureDefaults(this)
         com.droiddeck.launcher.runtime.RuntimeStatus.load(this)
         Thread({
             runCatching { com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.cleanArchiveCache(this) }

@@ -2672,7 +2672,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         val backToQam = !pipUi && !appTextFocus && !drawerOpen && !pcKeyboardOpen && !achievementsOpen &&
             !inputSettingsOpen && !gestureSettingsOpen &&
             SessionState.mode == SessionService.MODE_STEAM && SessionState.running && SessionState.firstFrameSeen &&
-            !SessionState.suspended && (padBridge == null || padBridge?.canHoldQam() == true)
+            !SessionState.suspended
         if (backQamInput.onKeyEvent(event, backToQam)) {
             pendingBackAction?.let(uiHandler::removeCallbacks)
             pendingBackAction = null

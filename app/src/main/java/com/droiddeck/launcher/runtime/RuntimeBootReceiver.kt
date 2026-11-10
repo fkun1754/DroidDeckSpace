@@ -14,10 +14,20 @@ class RuntimeBootReceiver : BroadcastReceiver() {
         val app = context.applicationContext
         Thread({
             runCatching {
-                RuntimeStatus.load(app)
-                if (!RuntimeStatus.checked || !RuntimeStatus.root || !RuntimeStatus.droidspaces) return@runCatching
-                Log.i("RuntimeBoot", "starting the runtime after boot")
-                ContainerRuntime.startMaintenance(app)
+                Log.i("RuntimeBoot", "run-at-boot enabled; waiting for root and the runtime")
+                repeat(4) { attempt ->
+                    if (ContainerRuntime.isAvailable(app)) {
+                        if (LinuxRuntimeInstaller.installedVersion(app) != null) {
+                            Log.i("RuntimeBoot", "starting the runtime after boot")
+                            ContainerRuntime.startMaintenance(app)
+                        } else {
+                            Log.w("RuntimeBoot", "no installed runtime to start")
+                        }
+                        return@runCatching
+                    }
+                    Thread.sleep(3000L * (attempt + 1))
+                }
+                Log.w("RuntimeBoot", "root/DroidSpaces was not ready after boot")
             }.onFailure { Log.w("RuntimeBoot", "boot start failed", it) }
         }, "runtime-boot-start").start()
     }

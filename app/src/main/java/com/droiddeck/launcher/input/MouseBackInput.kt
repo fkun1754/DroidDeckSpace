@@ -25,7 +25,9 @@ class MouseBackInput(private val sendRight: (Boolean) -> Unit, private val mouse
             return true
         }
         if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0 || !toGuest) return false
-        if (!fromMouse && !(injected && mouseAttached())) return false
+        // Only a physical mouse back button is translated into a right click for the guest. The
+        // system edge-back gesture is "injected" and must stay a DroidDeck menu gesture.
+        if (!fromMouse) return false
         if (held.isEmpty()) sendRight(true)
         held.add(device)
         return true

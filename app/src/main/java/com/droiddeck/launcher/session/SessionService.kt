@@ -1448,13 +1448,7 @@ class SessionService : Service() {
             .isSuccess
         if (!stopped || !waitForContainerExit(session, CONTAINER_STOP_MS)) {
             Log.w(TAG, "container ${session.name()} did not stop; retrying once")
-            runCatching {
-                if (com.droiddeck.launcher.runtime.RuntimePrefs.keepRunning(this)) {
-                    ContainerRuntime.startMaintenance(this)
-                } else {
-                    ContainerRuntime.stop(this)
-                }
-            }
+            runCatching { ContainerRuntime.stop(this) }
                 .onFailure { Log.w(TAG, "could not stop the container runtime", it) }
             stopped = waitForContainerExit(session, CONTAINER_STOP_MS)
         }
@@ -1464,6 +1458,14 @@ class SessionService : Service() {
             runCatching {
                 SessionState.logFile?.appendText("== container ${session.name()} did not stop; it will be replaced by the next session\n")
             }
+        }
+        // "Keep running in background": once the session container is gone, start a maintenance
+        // container so the runtime stays alive after Steam/desktop or the app is closed.
+        if (com.droiddeck.launcher.runtime.RuntimePrefs.keepRunning(this)) {
+            Thread({
+                runCatching { ContainerRuntime.startMaintenance(this) }
+                    .onFailure { Log.w(TAG, "could not start the keep-alive container", it) }
+            }, "keep-alive-container").start()
         }
     }
 
@@ -1650,14 +1652,12 @@ class SessionService : Service() {
             Log.i(TAG, "a maintenance container is running (an install is in progress); not stopping it here")
             return
         }
-        runCatching {
-                if (com.droiddeck.launcher.runtime.RuntimePrefs.keepRunning(this)) {
-                    ContainerRuntime.startMaintenance(this)
-                } else {
-                    ContainerRuntime.stop(this)
-                }
-            }
+        runCatching { ContainerRuntime.stop(this) }
             .onFailure { Log.w(TAG, "could not stop a residual container", it) }
+        if (com.droiddeck.launcher.runtime.RuntimePrefs.keepRunning(this)) {
+            runCatching { ContainerRuntime.startMaintenance(this) }
+                .onFailure { Log.w(TAG, "could not start the keep-alive container", it) }
+        }
     }
 
     private var launchWatcher: android.os.FileObserver? = null

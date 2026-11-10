@@ -127,7 +127,12 @@ internal fun RuntimeManagerSection(
         title = { Text(stringResource(R.string.runtime_mgr_manage)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                var runAtBoot by remember { mutableStateOf(RuntimePrefs.runAtBoot(ctx)) }
+                var runAtBoot by remember { mutableStateOf(false) }
+                LaunchedEffect(show) {
+                    runAtBoot = withContext(Dispatchers.IO) {
+                        active?.let { com.droiddeck.launcher.runtime.ContainerBootConfig.runAtBoot(ctx, it.container) } ?: false
+                    }
+                }
                 var keepRunning by remember { mutableStateOf(RuntimePrefs.keepRunning(ctx)) }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.runtime_mgr_run_at_boot), fontSize = 14.sp, modifier = Modifier.weight(1f))
