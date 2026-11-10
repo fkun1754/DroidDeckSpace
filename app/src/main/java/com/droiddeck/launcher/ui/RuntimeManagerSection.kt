@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -73,6 +74,11 @@ internal fun RuntimeManagerSection(
         runtimes = RuntimeStore.entries(ctx)
         active = RuntimeStore.active(ctx)
     }
+    fun deleteRuntimeFiles(root: File) {
+        if (root.path.startsWith(ctx.filesDir.path)) {
+            com.droiddeck.launcher.runtime.container.SuShell.exec("rm -rf " + com.droiddeck.launcher.runtime.container.SuShell.quote(root.absolutePath), 180_000)
+        }
+    }
     fun installActive(repair: Boolean) {
         if (busy || sessionRunning || working) return
         scope.launch {
@@ -102,8 +108,22 @@ internal fun RuntimeManagerSection(
         }
     }
 
+    if (working) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.runtime_mgr_busy_title)) },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.padding(end = 12.dp))
+                    Text(progress.ifEmpty { stringResource(R.string.runtime_mgr_working) }, fontSize = 13.sp)
+                }
+            },
+            confirmButton = {},
+        )
+    }
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!working) onDismiss() },
         title = { Text(stringResource(R.string.runtime_mgr_manage)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -215,9 +235,12 @@ internal fun RuntimeManagerSection(
                         list.forEach { container ->
                             TextButton(enabled = !checking, onClick = {
                                 checking = true
+                                working = true
+                                progress = ctx.getString(R.string.runtime_mgr_checking)
                                 scope.launch {
                                     val reason = withContext(Dispatchers.IO) { RuntimeDiscovery.compatibility(ctx, container) }
                                     checking = false
+                                    working = false
                                     if (reason != null) {
                                         message = ctx.getString(R.string.runtime_mgr_incompatible, reason)
                                     } else {
@@ -311,21 +334,30 @@ internal fun RuntimeManagerSection(
                     Text(stringResource(R.string.runtime_mgr_remove_hint), fontSize = 13.sp)
                     active?.let { entry ->
                         TextButton(onClick = {
-                            RuntimeStore.remove(ctx, entry.container)
-                            if (entry.builtin) File(entry.rootfs).deleteRecursively()
                             sub = null
-                            refresh()
-                            onChanged()
-                        }) { Text(stringResource(R.string.runtime_mgr_remove_app)) }
-                        TextButton(onClick = {
-                            RuntimeStore.remove(ctx, entry.container)
+                            working = true
+                            progress = ctx.getString(R.string.runtime_mgr_removing)
                             scope.launch {
                                 withContext(Dispatchers.IO) {
-                                    ContainerRuntime.removeContainer(ctx, entry.container)
-                                    val root = File(entry.rootfs)
-                                    if (root.path.startsWith(ctx.filesDir.path)) root.deleteRecursively()
+                                    RuntimeStore.remove(ctx, entry.container)
+                                    deleteRuntimeFiles(File(entry.rootfs))
                                 }
-                                sub = null
+                                working = false
+                                refresh()
+                                onChanged()
+                            }
+                        }) { Text(stringResource(R.string.runtime_mgr_remove_app)) }
+                        TextButton(onClick = {
+                            sub = null
+                            working = true
+                            progress = ctx.getString(R.string.runtime_mgr_removing)
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    RuntimeStore.remove(ctx, entry.container)
+                                    ContainerRuntime.removeContainer(ctx, entry.container)
+                                    deleteRuntimeFiles(File(entry.rootfs))
+                                }
+                                working = false
                                 refresh()
                                 onChanged()
                             }

@@ -3695,4 +3695,6 @@
     <string name="runtime_mgr_name_hint">名称（字母、数字、点、下划线、短横线、空格）</string>
     <string name="runtime_mgr_name_invalid">只能包含字母、数字、点、下划线、短横线和空格</string>
     <string name="runtime_mgr_name_taken">该名称已被使用</string>
+    <string name="runtime_mgr_busy_title">正在处理…</string>
+    <string name="runtime_mgr_removing">正在卸载运行时…</string>
 </resources>

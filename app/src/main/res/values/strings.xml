@@ -3883,4 +3883,6 @@
     <string name="runtime_mgr_name_hint">Name (letters, numbers, dot, underscore, dash, spaces)</string>
     <string name="runtime_mgr_name_invalid">Only letters, numbers, dot, underscore, dash and spaces are allowed</string>
     <string name="runtime_mgr_name_taken">This name is already in use</string>
+    <string name="runtime_mgr_busy_title">Working…</string>
+    <string name="runtime_mgr_removing">Removing the runtime…</string>
 </resources>
