@@ -3649,4 +3649,21 @@
     <string name="setup_container_recheck">重新检测</string>
     <string name="content_container_required">需要 DroidSpaces + root</string>
     <string name="content_needs_container">请先在“设置 → 概览”中配置 DroidSpaces 运行时，再启动会话。</string>
+
+    <string name="runtime_mgr_not_imported">尚未导入运行时</string>
+    <string name="runtime_mgr_hint">可导入已有 DroidSpaces 容器，或新建运行时</string>
+    <string name="runtime_mgr_manage">管理</string>
+    <string name="runtime_mgr_import">导入 DroidSpaces 容器</string>
+    <string name="runtime_mgr_new">新建运行时</string>
+    <string name="runtime_mgr_remove">卸载运行时</string>
+    <string name="runtime_mgr_new_hint">将官方 Linux 运行时下载到新的 DroidSpaces 容器中。</string>
+    <string name="runtime_mgr_start">开始</string>
+    <string name="runtime_mgr_working">正在安装 Linux 运行时…</string>
+    <string name="runtime_mgr_failed">操作失败：%1$s</string>
+    <string name="runtime_mgr_imported">已导入：%1$s</string>
+    <string name="runtime_mgr_incompatible">不符合要求：%1$s</string>
+    <string name="runtime_mgr_no_containers">未找到可导入的 DroidSpaces 容器</string>
+    <string name="runtime_mgr_remove_hint">可以只从 DroidDeckSpace 移除，也可以同时卸载对应的 DroidSpaces 容器。</string>
+    <string name="runtime_mgr_remove_app">仅从 DroidDeckSpace 卸载</string>
+    <string name="runtime_mgr_remove_both">连同 DroidSpaces 容器一起卸载</string>
 </resources>

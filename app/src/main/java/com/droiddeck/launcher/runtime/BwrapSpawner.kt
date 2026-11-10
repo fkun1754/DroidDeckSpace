@@ -374,7 +374,7 @@ object BwrapSpawner {
         }, "bwrap-$id-watch").apply { isDaemon = true; start() }
         try {
             GuestCommand.ensureContainer(context)
-            val result = DroidspacesCli.execUnlimited(context, ContainerPaths.CONTAINER_NAME, Process.myUid(),
+            val result = DroidspacesCli.execUnlimited(context, ContainerPaths.containerName(context), Process.myUid(),
                 listOf("/bin/sh", "-c", script),
                 { line ->
                     if (guestPid.get() <= 0 && line.startsWith("$PID_MARKER:")) {

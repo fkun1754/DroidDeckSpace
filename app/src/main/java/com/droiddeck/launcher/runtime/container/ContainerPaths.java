@@ -13,6 +13,17 @@ public final class ContainerPaths {
     /** Derived per application id so coexisting builds (variants, debug) never share a container. */
     public static final String CONTAINER_NAME = "droiddeck." + com.droiddeck.launcher.BuildConfig.APPLICATION_ID;
 
+    public static String defaultContainerName() {
+        return CONTAINER_NAME;
+    }
+
+    /** Container of the active runtime (built-in or an imported DroidSpaces container). */
+    public static String containerName(android.content.Context context) {
+        com.droiddeck.launcher.runtime.RuntimeStore.Entry entry =
+                com.droiddeck.launcher.runtime.RuntimeStore.INSTANCE.active(context);
+        return entry == null ? CONTAINER_NAME : entry.getContainer();
+    }
+
     public static final String CLI = "/data/local/Droidspaces/bin/droidspaces";
     public static final String WORKSPACE = "/data/local/Droidspaces";
     public static final String LOGS = WORKSPACE + "/Logs";
@@ -57,7 +68,11 @@ public final class ContainerPaths {
     }
 
     public static File rootfs(android.content.Context context) {
-        return new File(filesDir(context), HOST_ROOTFS_DIR);
+        com.droiddeck.launcher.runtime.RuntimeStore.Entry entry =
+                com.droiddeck.launcher.runtime.RuntimeStore.INSTANCE.active(context);
+        return entry == null
+                ? new File(filesDir(context), HOST_ROOTFS_DIR)
+                : new File(entry.getRootfs());
     }
 
     public static File sessionDir(android.content.Context context) {

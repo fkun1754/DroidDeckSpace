@@ -481,8 +481,9 @@ internal fun SetupPanel(
                                 fontSize = 13.sp, color = colors.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                             )
+                            runtimeCheck(false)
+                            RuntimeManagerSection(busy = s.busy, sessionRunning = s.sessionRunning)
                         }
-                        SettingsGroup(stringResource(R.string.setup_runtime)) { runtimeCheck(false) }
                         SteamIntegrationGroup(s.integration, s.integrationFocus, a.onIntegration, a.onIntegrationAppInfo, a.onIntegrationLocation)
                     }
                     1 -> {

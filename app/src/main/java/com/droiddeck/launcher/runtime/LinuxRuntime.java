@@ -40,8 +40,14 @@ public final class LinuxRuntime {
 
     private LinuxRuntime() {}
 
-    public static File rootDir(Context context) {
+    /** Built-in runtime directory; the official installer/uninstaller only manages this one. */
+    public static File defaultRootDir(Context context) {
         return new File(context.getFilesDir(), DIR);
+    }
+
+    /** Active runtime rootfs (imported container or the built-in one). */
+    public static File rootDir(Context context) {
+        return com.droiddeck.launcher.runtime.RuntimeStore.INSTANCE.activeRootfs(context);
     }
 
     public static File sessionRoot(Context context) {
@@ -63,6 +69,16 @@ public final class LinuxRuntime {
 
     public static boolean isInstalled(Context context) {
         return hasRootfs(context);
+    }
+
+    public static boolean isInstalledAt(File root) {
+        return hasRootfsAt(root);
+    }
+
+    public static boolean hasRootfsAt(File root) {
+        return (new File(root, "usr/bin/gamescope").isFile() || new File(root, "usr/games/gamescope").isFile())
+                && (new File(root, SESSION_SCRIPT.substring(1)).isFile()
+                        || new File(root, LegacyNames.SESSION_SCRIPT.substring(1)).isFile());
     }
 
     public static boolean hasRootfs(Context context) {

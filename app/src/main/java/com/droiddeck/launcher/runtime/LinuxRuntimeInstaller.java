@@ -86,7 +86,7 @@ public final class LinuxRuntimeInstaller {
     }
 
     private static String rootfsVersion(Context context) {
-        File marker = new File(LinuxRuntime.rootDir(context), VERSION_FILE);
+        File marker = new File(LinuxRuntime.defaultRootDir(context), VERSION_FILE);
         if (!marker.isFile()) return null;
         String v = FileUtils.readString(marker);
         return v == null ? null : v.trim();
@@ -152,7 +152,7 @@ public final class LinuxRuntimeInstaller {
                 job.ok = true;
                 return true;
             }
-            job.ok = installOnce(app, release, progress);
+            job.ok = installOnce(app, release, LinuxRuntime.defaultRootDir(app), progress);
             if (job.ok && desktop) keepDesktop(app, progress);
             return job.ok;
         } finally {
@@ -248,7 +248,7 @@ public final class LinuxRuntimeInstaller {
     public static String removalError() { return removalError; }
 
     public static boolean hasRemovalPending(Context context) {
-        return removalDirectory(LinuxRuntime.rootDir(context)).exists();
+        return removalDirectory(LinuxRuntime.defaultRootDir(context)).exists();
     }
 
     private static File removalDirectory(File root) {
@@ -302,7 +302,7 @@ public final class LinuxRuntimeInstaller {
 
     private static boolean packsOnly(Context context, Release release, ProgressListener listener) {
         if (!LinuxRuntime.hasRootfs(context) || LinuxRuntime.isInstalled(context) || !release.version.equals(rootfsVersion(context))) return false;
-        File root = LinuxRuntime.rootDir(context);
+        File root = LinuxRuntime.defaultRootDir(context);
         try {
             recoverInterruptedSwap(root, new File(root.getParentFile(), LinuxRuntime.DIR + ".new"), new File(root.getParentFile(), LinuxRuntime.DIR + ".old"));
         } catch (IOException e) {
@@ -315,15 +315,51 @@ public final class LinuxRuntimeInstaller {
                 && LinuxRuntime.isInstalled(context);
     }
 
-    private static boolean installOnce(Context context, Release release, ProgressListener listener) {
+    /** Installs a runtime into a custom directory (a new imported runtime). */
+    public static boolean installTo(Context context, Release release, java.io.File targetRoot, ProgressListener listener) {
+        Job job;
+        boolean owner;
+        synchronized (JOB_LOCK) {
+            if (running != null && (running.removal || running.maintenance)) return false;
+            owner = running == null;
+            if (owner) { running = new Job(false, context.getString(R.string.user_apps_starting)); removalError = null; }
+            job = running;
+            if (listener != null) job.listeners.add(listener);
+        }
+        if (!owner) return join(job, listener);
+        try {
+            Context app = context.getApplicationContext();
+            ProgressListener progress = new ProgressListener() {
+                @Override public void onProgress(String stage, int percent) {
+                    onProgress(Step.OTHER, stage, percent);
+                }
+
+                @Override public void onProgress(Step step, String stage, int percent) {
+                    job.step = step;
+                    job.stage = stage;
+                    job.percent = percent;
+                    for (ProgressListener l : job.listeners) l.onProgress(step, stage, percent);
+                }
+            };
+            job.ok = installOnce(app, release, targetRoot, progress);
+            return job.ok;
+        } finally {
+            synchronized (JOB_LOCK) {
+                running = null;
+            }
+            job.done.countDown();
+        }
+    }
+
+    private static boolean installOnce(Context context, Release release, File root, ProgressListener listener) {
         File archive = new File(context.getCacheDir(), archiveName(release));
         boolean keepPartial = false;
         try {
             deleteOtherArchives(context.getCacheDir(), archive.getName());
-            File pendingRemoval = removalDirectory(LinuxRuntime.rootDir(context));
+            File pendingRemoval = removalDirectory(root);
             if (pendingRemoval.exists() && listener != null) listener.onProgress(context.getString(R.string.rtinst_removing_leftovers), -1);
             if (!discard(pendingRemoval, null)) throw new IOException("Cannot clear the previous runtime: " + pendingRemoval);
-            emptyTrash(LinuxRuntime.rootDir(context).getParentFile());
+            emptyTrash(root.getParentFile());
             String downloading = context.getString(R.string.rtinst_downloading);
             if (listener != null) listener.onProgress(Step.DOWNLOADING, downloading, 0);
             if (!AddonPack.DIRECTAUDIO.await(context, () -> true, packProgress(listener, downloading))) throw new IOException("Cannot download DirectAudio");
@@ -346,9 +382,8 @@ public final class LinuxRuntimeInstaller {
                 return false;
             }
 
-            File root = LinuxRuntime.rootDir(context);
-            File staging = new File(root.getParentFile(), LinuxRuntime.DIR + ".new");
-            File old = new File(root.getParentFile(), LinuxRuntime.DIR + ".old");
+            File staging = new File(root.getParentFile(), root.getName() + ".new");
+            File old = new File(root.getParentFile(), root.getName() + ".old");
             recoverInterruptedSwap(root, staging, old);
             if (!discard(staging, null) || !staging.mkdirs()) return false;
             if (listener != null) listener.onProgress(context.getString(R.string.rtinst_extracting), -1);
@@ -487,7 +522,7 @@ public final class LinuxRuntimeInstaller {
 
     public static Removal beginUninstall(Context context) {
         if (sessionInUse()) return null;
-        return beginUninstall(context.getApplicationContext(), LinuxRuntime.rootDir(context));
+        return beginUninstall(context.getApplicationContext(), LinuxRuntime.defaultRootDir(context));
     }
 
     private static boolean sessionInUse() {

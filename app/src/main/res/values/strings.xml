@@ -3837,4 +3837,21 @@
     <string name="setup_container_recheck">Re-check</string>
     <string name="content_container_required">DroidSpaces + root required</string>
     <string name="content_needs_container">Set up the DroidSpaces runtime in Setup before starting a session.</string>
+
+    <string name="runtime_mgr_not_imported">No runtime imported</string>
+    <string name="runtime_mgr_hint">Import a DroidSpaces container or create a new runtime</string>
+    <string name="runtime_mgr_manage">Manage</string>
+    <string name="runtime_mgr_import">Import DroidSpaces container</string>
+    <string name="runtime_mgr_new">New runtime</string>
+    <string name="runtime_mgr_remove">Remove runtime</string>
+    <string name="runtime_mgr_new_hint">Downloads the official Linux runtime into a new DroidSpaces container.</string>
+    <string name="runtime_mgr_start">Start</string>
+    <string name="runtime_mgr_working">Installing the Linux runtime…</string>
+    <string name="runtime_mgr_failed">Operation failed: %1$s</string>
+    <string name="runtime_mgr_imported">Imported: %1$s</string>
+    <string name="runtime_mgr_incompatible">Not compatible: %1$s</string>
+    <string name="runtime_mgr_no_containers">No compatible DroidSpaces containers found</string>
+    <string name="runtime_mgr_remove_hint">Remove the runtime from DroidDeckSpace only, or uninstall its DroidSpaces container as well.</string>
+    <string name="runtime_mgr_remove_app">Remove from DroidDeckSpace only</string>
+    <string name="runtime_mgr_remove_both">Also remove the DroidSpaces container</string>
 </resources>

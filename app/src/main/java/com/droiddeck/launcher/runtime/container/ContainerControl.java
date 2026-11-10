@@ -131,12 +131,12 @@ public final class ContainerControl {
         List<String> command = new ArrayList<>();
         command.add(ContainerPaths.GUEST_CTL);
         command.addAll(Arrays.asList(argv));
-        ExecResult result = DroidspacesCli.exec(context, ContainerPaths.CONTAINER_NAME, null,
+        ExecResult result = DroidspacesCli.exec(context, ContainerPaths.containerName(context), null,
                 command, null, timeoutMs, null, null);
         if (!result.ok()) {
             throw new IllegalStateException("guest control '" + String.join(" ", command)
                     + "' failed\n" + result.describe() + "\n"
-                    + ContainerRuntime.diagnostics(context, ContainerPaths.CONTAINER_NAME));
+                    + ContainerRuntime.diagnostics(context, ContainerPaths.containerName(context)));
         }
         return result;
     }

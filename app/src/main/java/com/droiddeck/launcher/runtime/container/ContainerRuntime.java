@@ -52,9 +52,26 @@ public final class ContainerRuntime {
      * package ids are cleaned too, because re-installing under a new id must not leave orphaned
      * containers that point at a deleted rootfs.
      */
+    /** Stop and unregister one DroidSpaces container (runtime removal "with container"). */
+    public static void removeContainer(Context context, String name) {
+        try {
+            if (DroidspacesCli.installed()) DroidspacesCli.stop(name);
+        } catch (Exception e) {
+            Log.w(TAG, "could not stop container " + name + ": " + e);
+        }
+        String quoted = SuShell.quote(name);
+        ExecResult result = SuShell.exec(
+                "rm -rf " + ContainerPaths.WORKSPACE + "/Containers/" + quoted + " "
+                        + ContainerPaths.WORKSPACE + "/Logs/" + quoted + " "
+                        + ContainerPaths.WORKSPACE + "/Pids/" + quoted + ".pid; true",
+                20_000);
+        if (!result.ok()) Log.w(TAG, "container removal exited " + result.exitCode + ": " + result.combined());
+        DroidspacesCli.forget();
+    }
+
     public static void removeContainers(Context context) {
         java.util.List<String> names = new java.util.ArrayList<>();
-        names.add(ContainerPaths.CONTAINER_NAME);
+        names.add(ContainerPaths.containerName(context));
         names.add("droiddeck.com.droiddeck.launcher.droidspace");
         names.add("droiddeck.com.droiddeck.launcher");
         names.add(ContainerPaths.LEGACY_CONTAINER_NAME);
@@ -91,7 +108,7 @@ public final class ContainerRuntime {
     }
 
     public static String state(Context context) {
-        return DroidspacesCli.state(ContainerPaths.CONTAINER_NAME);
+        return DroidspacesCli.state(ContainerPaths.containerName(context));
     }
 
     public static boolean isRunning(Context context) {
@@ -122,7 +139,7 @@ public final class ContainerRuntime {
         synchronized (START_LOCK) {
             prepare(context, spec);
             List<String> binds = ContainerEnv.binds(context, spec);
-            String name = ContainerPaths.CONTAINER_NAME;
+            String name = ContainerPaths.containerName(context);
             Log.i(TAG, "starting container '" + name + "': mode=" + spec.mode() + ", "
                     + binds.size() + " binds");
             String cleanupFailure = "";
@@ -166,7 +183,7 @@ public final class ContainerRuntime {
     }
 
     public static void awaitReady(Context context) {
-        awaitReady(context, ContainerPaths.CONTAINER_NAME);
+        awaitReady(context, ContainerPaths.containerName(context));
     }
 
     public static void awaitReady(Context context, String name) {
@@ -213,7 +230,7 @@ public final class ContainerRuntime {
     }
 
     public static void stop(Context context) {
-        stop(context, ContainerPaths.CONTAINER_NAME);
+        stop(context, ContainerPaths.containerName(context));
     }
 
     public static void stop(Context context, String name) {
@@ -231,14 +248,14 @@ public final class ContainerRuntime {
         if (!isAvailable(context)) throw new IllegalStateException(unavailableMessage(context));
         SessionSpec spec = session == null ? maintenanceSpec() : session;
         synchronized (START_LOCK) {
-            String state = confirmedState();
+            String state = confirmedState(context);
             if (DroidspacesCli.RUNNING.equals(state)) {
-                return new ContainerSession(ContainerPaths.CONTAINER_NAME, spec.sessionId());
+                return new ContainerSession(ContainerPaths.containerName(context), spec.sessionId());
             }
             if (!DroidspacesCli.STOPPED.equals(state)) {
                 throw new IllegalStateException("cannot confirm the state of container '"
-                        + ContainerPaths.CONTAINER_NAME + "' (state=" + state + ")\n"
-                        + diagnostics(context, ContainerPaths.CONTAINER_NAME));
+                        + ContainerPaths.containerName(context) + "' (state=" + state + ")\n"
+                        + diagnostics(context, ContainerPaths.containerName(context)));
             }
             return startWithoutReplacing(context, spec);
         }
@@ -306,18 +323,18 @@ public final class ContainerRuntime {
                 .build();
     }
 
-    private static String confirmedState() {
-        String state = DroidspacesCli.state(ContainerPaths.CONTAINER_NAME);
+    private static String confirmedState(Context context) {
+        String state = DroidspacesCli.state(ContainerPaths.containerName(context));
         for (int attempt = 1; attempt < STATE_CONFIRM_ATTEMPTS && state == null; attempt++) {
             sleep(STATE_CONFIRM_DELAY_MS);
-            state = DroidspacesCli.state(ContainerPaths.CONTAINER_NAME);
+            state = DroidspacesCli.state(ContainerPaths.containerName(context));
         }
         return state;
     }
 
     /** Maintenance start: a reported name conflict means the container is already running. */
     private static ContainerSession startWithoutReplacing(Context context, SessionSpec spec) {
-        String name = ContainerPaths.CONTAINER_NAME;
+        String name = ContainerPaths.containerName(context);
         prepare(context, spec);
         List<String> binds = ContainerEnv.binds(context, spec);
         cleanStaleContainerConfig(context, name);
@@ -348,11 +365,11 @@ public final class ContainerRuntime {
     }
 
     public static ExecResult exec(Context context, List<String> argv, int timeoutMs) {
-        return DroidspacesCli.run(context, ContainerPaths.CONTAINER_NAME, argv, timeoutMs);
+        return DroidspacesCli.run(context, ContainerPaths.containerName(context), argv, timeoutMs);
     }
 
     public static ExecResult execAsUser(Context context, int uid, List<String> argv, int timeoutMs) {
-        return DroidspacesCli.runAsUser(context, ContainerPaths.CONTAINER_NAME, uid, argv, timeoutMs);
+        return DroidspacesCli.runAsUser(context, ContainerPaths.containerName(context), uid, argv, timeoutMs);
     }
 
     public static String tailLog(Context context, String name, int lines) {

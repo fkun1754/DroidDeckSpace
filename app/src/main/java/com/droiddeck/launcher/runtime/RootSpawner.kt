@@ -125,7 +125,7 @@ object RootSpawner {
         }, "root-$id-watch").apply { isDaemon = true; start() }
         try {
             GuestCommand.ensureContainer(context)
-            val result = DroidspacesCli.exec(context, ContainerPaths.CONTAINER_NAME, null,
+            val result = DroidspacesCli.exec(context, ContainerPaths.containerName(context), null,
                 listOf("/bin/sh", "-c", script), stdin, ROOT_COMMAND_TIMEOUT_MS,
                 { line ->
                     if (guestPid.get() <= 0 && line.startsWith("$PID_MARKER:")) {
