@@ -3,23 +3,23 @@
   "sourceRepo": "fkun1754/DroidDeckSpace",
   "ciRepo": "fkun1754/DroidDeckSpace",
   "stable": {
-    "tag": "0.7.0",
-    "title": "DroidDeckSpace 0.7.0",
-    "summary": "First release: runs the Linux runtime in a DroidSpaces container instead of proot.",
-    "commit": "11ebebf31beb255702941dee5cda968f726fd00d",
+    "tag": "0.7.1",
+    "title": "DroidDeckSpace 0.7.1",
+    "summary": "Fix: hard-link the runtime's l2s utility chains so a fresh runtime boots in the container.",
+    "commit": "bb2ea63a2fa3c52f3e6dee715453137da382434e",
     "pr": 0,
-    "version": "0.7.0",
-    "versionCode": 18,
-    "publishedAt": 1794239386377,
-    "url": "https://github.com/fkun1754/DroidDeckSpace/releases/tag/0.7.0",
+    "version": "0.7.1",
+    "versionCode": 19,
+    "publishedAt": 1794279243329,
+    "url": "https://github.com/fkun1754/DroidDeckSpace/releases/tag/0.7.1",
     "apks": {
       "com.droiddeckspace.launcher": {
-        "name": "DroidDeckSpace-0.7.0.apk",
-        "url": "https://github.com/fkun1754/DroidDeckSpace/releases/download/0.7.0/DroidDeckSpace-0.7.0.apk",
+        "name": "DroidDeckSpace-0.7.1.apk",
+        "url": "https://github.com/fkun1754/DroidDeckSpace/releases/download/0.7.1/DroidDeckSpace-0.7.1.apk",
         "size": 103318975,
-        "sha256": "4deecbb8c7e053d23f061c5114882bfec8683ca039ef89283b69c80c0b1079a7",
+        "sha256": "451006002c22e41a96d0685b43350e3cae2a880ca65d0ce41f223224370acd4d",
         "packageName": "com.droiddeckspace.launcher",
-        "versionCode": 18,
+        "versionCode": 19,
         "signerSha256": "a40da80a59d170caa950cf15c18c454d47a39b26989d8b640ecd745ba71bf5dc"
       }
     }
@@ -27,5 +27,5 @@
   "preview": null,
   "tests": [],
   "recentPreviews": [],
-  "checkedAt": 1794239386377
+  "checkedAt": 1794279243329
 }
