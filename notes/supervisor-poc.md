@@ -43,3 +43,19 @@ kwin_wayland --virtual --socket wayland-desktop --no-lockscreen
    foreground to save CPU.
 4. Wire the supervisor into the app: keep-running starts only the supervisor; requesting the desktop
    starts KWin/KDE; switching VNC <-> foreground toggles the consumer.
+
+## Headless Plasma + VNC prototype (same day)
+
+- A full Plasma session starts on the virtual KWin: `startplasma-wayland` with a
+  `/usr/local/bin/kwin_wayland` shim that injects `--virtual` and the Zink env.
+  kwin_wayland, kded6, kactivitymanagerd and plasmashell stay alive.
+- `krfb` + `xdg-desktop-portal-kde` install from apt; krfb starts and listens on TCP 5900
+  (hex `170C` in /proc/net/tcp).
+- Blocker: krfb's capture fails: `krfb.framebuffer.pipewire: Failed to start screencast: 2`.
+  The KDE portal backend advertises ScreenCast, but the portal's ScreenCast approval cannot be
+  granted in a headless session (there is no dialog UI / permission store entry). Until that is
+  pre-authorized, krfb serves a black screen.
+- Next options:
+  1. Pre-seed the xdg-desktop-portal permission store for krfb's app id.
+  2. Bypass the portal with a direct KWin screencast client (`zkde_screencast_unstable_v1`).
+  3. Keep krfb only as a fallback and implement the foreground pipewire path first.
