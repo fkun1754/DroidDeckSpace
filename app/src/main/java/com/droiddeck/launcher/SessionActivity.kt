@@ -2219,24 +2219,114 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
             WaylandCompositor.nativeResizeOutput(size.first, size.second)
         }
         if (!SessionState.running) SessionEvents.record("compositor.started")
-        if (!SessionState.running) {
-            SessionEvents.transition(SessionPhase.STARTING_GUEST, "guest.starting")
-            SessionService.start(
-                this, intent.getStringExtra(SessionService.EXTRA_MODE) ?: SessionService.MODE_STEAM,
-                intent.getStringExtra(SessionService.EXTRA_PROGRAM),
-                intent.getStringExtra(SessionService.EXTRA_STEAM_UI),
-                intent.getStringExtra(SessionService.EXTRA_STEAM_URL),
-                intent.getStringArrayExtra(SessionService.EXTRA_PROGRAM_ARGS),
-                intent.getStringExtra(SessionService.EXTRA_GAME_ID),
-                sessionActivityDisplayId,
-            )
-            intent.getStringExtra(EXTRA_PLAYED_GAME)?.let { com.droiddeck.launcher.frontend.Library.recordPlayed(this, it) }
+        outputReady = true
+        if (!SessionState.running && !passwordWizardChecked) {
+            passwordWizardChecked = true
+            maybeShowDesktopPasswordWizard()
         }
+        if (!SessionState.running) startGuestSession()
         applyFrameGen()
         applyGameAlignment()
     }
 
+    private fun startGuestSession() {
+        if (passwordWizardBlocking || SessionState.running) return
+        SessionEvents.transition(SessionPhase.STARTING_GUEST, "guest.starting")
+        SessionService.start(
+            this, intent.getStringExtra(SessionService.EXTRA_MODE) ?: SessionService.MODE_STEAM,
+            intent.getStringExtra(SessionService.EXTRA_PROGRAM),
+            intent.getStringExtra(SessionService.EXTRA_STEAM_UI),
+            intent.getStringExtra(SessionService.EXTRA_STEAM_URL),
+            intent.getStringArrayExtra(SessionService.EXTRA_PROGRAM_ARGS),
+            intent.getStringExtra(SessionService.EXTRA_GAME_ID),
+            sessionActivityDisplayId,
+        )
+        intent.getStringExtra(EXTRA_PLAYED_GAME)?.let { com.droiddeck.launcher.frontend.Library.recordPlayed(this, it) }
+        pendingDesktopPassword?.let { password ->
+            pendingDesktopPassword = null
+            Thread({
+                repeat(90) {
+                    if (com.droiddeck.launcher.runtime.container.ContainerRuntime.isRunning(this)) {
+                        val error = com.droiddeck.launcher.runtime.DesktopPassword.set(this, password)
+                        runOnUiThread {
+                            android.widget.Toast.makeText(
+                                this,
+                                if (error == null) getString(R.string.desktop_password_set) else error,
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                        return@Thread
+                    }
+                    try { Thread.sleep(1000) } catch (e: InterruptedException) { return@Thread }
+                }
+            }, "desktop-password").start()
+        }
+    }
+
+    private fun maybeShowDesktopPasswordWizard() {
+        val mode = intent.getStringExtra(SessionService.EXTRA_MODE) ?: SessionService.MODE_STEAM
+        if (SessionState.running || mode != SessionService.MODE_DESKTOP) return
+        if (com.droiddeck.launcher.runtime.DesktopPassword.configured(this) ||
+            com.droiddeck.launcher.runtime.DesktopPassword.prompted(this)
+        ) return
+        passwordWizardBlocking = true
+        showDesktopPasswordWizard()
+    }
+
+    private fun showDesktopPasswordWizard() {
+        val context = this
+        val padding = (16 * resources.displayMetrics.density).toInt()
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(padding, padding / 2, padding, 0)
+        }
+        val password = android.widget.EditText(this).apply {
+            hint = getString(R.string.desktop_password_hint)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val confirm = android.widget.EditText(this).apply {
+            hint = getString(R.string.desktop_password_confirm)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        layout.addView(password)
+        layout.addView(confirm)
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle(R.string.desktop_password_title)
+            .setMessage(R.string.desktop_password_message)
+            .setView(layout)
+            .setCancelable(false)
+            .setPositiveButton(R.string.desktop_password_save, null)
+            .setNegativeButton(R.string.desktop_password_later) { _, _ ->
+                com.droiddeck.launcher.runtime.DesktopPassword.markPrompted(context)
+                passwordWizardBlocking = false
+                startGuestSession()
+            }
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val first = password.text.toString()
+                val again = confirm.text.toString()
+                when {
+                    first.length < 6 -> android.widget.Toast.makeText(context, R.string.desktop_password_short, android.widget.Toast.LENGTH_SHORT).show()
+                    first != again -> android.widget.Toast.makeText(context, R.string.desktop_password_mismatch, android.widget.Toast.LENGTH_SHORT).show()
+                    else -> {
+                        com.droiddeck.launcher.runtime.DesktopPassword.markPrompted(context)
+                        pendingDesktopPassword = first
+                        passwordWizardBlocking = false
+                        dialog.dismiss()
+                        startGuestSession()
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
     private var surfaceW = 0
+    private var outputReady = false
+    private var passwordWizardBlocking = false
+    private var pendingDesktopPassword: String? = null
+    private var passwordWizardChecked = false
     private var surfaceH = 0
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {

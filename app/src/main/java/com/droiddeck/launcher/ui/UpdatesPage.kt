@@ -128,6 +128,7 @@ internal fun UpdatesPage(s: FrontEndState, a: FrontEndActions, modifier: Modifie
                         Box(Modifier.weight(1.15f)) { StatusPanel(s, u, ua, me) }
                     }
                 }
+                OfficialFeed()
             }
         }
     }

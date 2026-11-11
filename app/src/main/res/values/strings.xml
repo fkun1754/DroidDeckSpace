@@ -3907,4 +3907,20 @@
     <string name="runtime_cfg_selinux">SELinux permissive</string>
     <string name="runtime_cfg_sandbox">Allow sandboxing</string>
     <string name="runtime_cfg_vts">Allow VTS</string>
+
+    <string name="desktop_password_title">Set the desktop password</string>
+    <string name="desktop_password_message">Desktop mode runs as the normal user droiddeck. Set a password so you can use sudo inside the desktop (at least 6 characters).</string>
+    <string name="desktop_password_hint">New password</string>
+    <string name="desktop_password_confirm">Repeat password</string>
+    <string name="desktop_password_save">Set and continue</string>
+    <string name="desktop_password_later">Later</string>
+    <string name="desktop_password_short">Use at least 6 characters</string>
+    <string name="desktop_password_mismatch">The passwords do not match</string>
+    <string name="desktop_password_set">Desktop password set</string>
+    <string name="official_feed_title">Official DroidDeck updates</string>
+    <string name="official_feed_loading">Loading release notes…</string>
+    <string name="official_feed_empty">Release notes are unavailable right now</string>
+    <string name="official_feed_stable">STABLE</string>
+    <string name="official_feed_preview">PREVIEW</string>
+    <string name="official_feed_more">Read more</string>
 </resources>

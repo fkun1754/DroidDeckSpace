@@ -3719,4 +3719,20 @@
     <string name="runtime_cfg_selinux">SELinux Permissive</string>
     <string name="runtime_cfg_sandbox">允许沙箱</string>
     <string name="runtime_cfg_vts">允许 VTS</string>
+
+    <string name="desktop_password_title">设置桌面密码</string>
+    <string name="desktop_password_message">桌面模式以普通用户 droiddeck 运行。请设置密码以便在桌面里使用 sudo（至少 6 位）。</string>
+    <string name="desktop_password_hint">新密码</string>
+    <string name="desktop_password_confirm">重复密码</string>
+    <string name="desktop_password_save">设置并继续</string>
+    <string name="desktop_password_later">稍后设置</string>
+    <string name="desktop_password_short">密码至少需要 6 位</string>
+    <string name="desktop_password_mismatch">两次输入的密码不一致</string>
+    <string name="desktop_password_set">桌面密码已设置</string>
+    <string name="official_feed_title">官方 DroidDeck 动态</string>
+    <string name="official_feed_loading">正在获取更新日志…</string>
+    <string name="official_feed_empty">暂时无法获取更新日志</string>
+    <string name="official_feed_stable">稳定版</string>
+    <string name="official_feed_preview">预览版</string>
+    <string name="official_feed_more">展开全文</string>
 </resources>
