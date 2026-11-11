@@ -118,7 +118,10 @@ if [ "$(id -u)" = 0 ]; then
   exec "$@"
 fi
 if [ "$background" = 1 ]; then
-  /usr/local/bin/droiddeck-root "$@" </dev/null &
+  if [ -t 0 ]; then /usr/local/bin/droiddeck-root "$@" </dev/null & else /usr/local/bin/droiddeck-root "$@" & fi
   exit 0
+fi
+if [ -t 0 ]; then
+  exec /usr/local/bin/droiddeck-root "$@" </dev/null
 fi
 exec /usr/local/bin/droiddeck-root "$@"
