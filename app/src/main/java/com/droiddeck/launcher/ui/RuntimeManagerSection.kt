@@ -66,9 +66,10 @@ internal fun RuntimeManagerSection(
     var working by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
-    var renameTarget by remember { mutableStateOf<RuntimeStore.Entry?>(null) }
+    var editTarget by remember { mutableStateOf<RuntimeStore.Entry?>(null) }
     var renameText by remember { mutableStateOf("") }
     var renameError by remember { mutableStateOf<String?>(null) }
+    var editBoot by remember { mutableStateOf(false) }
     var clearCacheOnClose by remember { mutableStateOf(false) }
     fun closeManager() {
         if (clearCacheOnClose) {
@@ -190,7 +191,7 @@ internal fun RuntimeManagerSection(
                                 message = null
                                 refresh()
                             },
-                            onLongClick = { renameTarget = entry; renameText = entry.label },
+                            onLongClick = { editTarget = entry; renameText = entry.label },
                         ).padding(horizontal = 4.dp, vertical = 8.dp),
                     ) {
                         Text((if (active?.container == entry.container) "✓ " else "") + entry.label, fontSize = 14.sp)
@@ -202,6 +203,7 @@ internal fun RuntimeManagerSection(
                     }
                 }
                 message?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error) }
+                Text(stringResource(R.string.runtime_mgr_longpress_hint), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(enabled = installedVersion != null && !working, onClick = { sub = "repair" }) { Text(stringResource(R.string.runtime_mgr_repair)) }
                     TextButton(
@@ -241,26 +243,49 @@ internal fun RuntimeManagerSection(
         )
     }
 
-    renameTarget?.let { target ->
+    editTarget?.let { target ->
+        LaunchedEffect(target.container) {
+            editBoot = withContext(Dispatchers.IO) {
+                com.droiddeck.launcher.runtime.ContainerBootConfig.runAtBoot(ctx, target.container)
+            }
+        }
         AlertDialog(
-            onDismissRequest = { renameTarget = null },
-            title = { Text(stringResource(R.string.runtime_mgr_rename)) },
+            onDismissRequest = { editTarget = null },
+            title = { Text(stringResource(R.string.runtime_mgr_edit_title)) },
             text = {
-                OutlinedTextField(
-                    value = renameText, onValueChange = { renameText = it }, singleLine = true,
-                    label = { Text(stringResource(R.string.runtime_mgr_rename_hint)) },
-                    supportingText = { Text(renameError ?: stringResource(R.string.runtime_mgr_name_hint)) },
-                    isError = renameError != null,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                )
+                Column {
+                    OutlinedTextField(
+                        value = renameText, onValueChange = { renameText = it }, singleLine = true,
+                        label = { Text(stringResource(R.string.runtime_mgr_rename_hint)) },
+                        supportingText = { Text(renameError ?: stringResource(R.string.runtime_mgr_name_hint)) },
+                        isError = renameError != null,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    )
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.runtime_mgr_run_at_boot), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Switch(checked = editBoot, onCheckedChange = { checked ->
+                            editBoot = checked
+                            // Always remember the choice; the config is (re)written after the next start.
+                            com.droiddeck.launcher.runtime.RuntimePrefs.setContainerBoot(ctx, target.container, checked)
+                            scope.launch {
+                                val error = withContext(Dispatchers.IO) {
+                                    com.droiddeck.launcher.runtime.ContainerBootConfig.setRunAtBoot(ctx, target.container, checked)
+                                }
+                                if (error != null) message = error
+                            }
+                        })
+                    }
+                    Text(stringResource(R.string.runtime_mgr_edit_hint), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
                     val error = com.droiddeck.launcher.runtime.RuntimeStore.rename(ctx, target.container, renameText)
-                    if (error == null) { renameTarget = null; renameError = null; message = null; refresh(); onChanged() } else renameError = error
+                    if (error == null) { editTarget = null; renameError = null; message = null; refresh(); onChanged() }
+                    else renameError = error
                 }) { Text(stringResource(R.string.runtime_mgr_rename_save)) }
             },
-            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text(stringResource(R.string.common_cancel)) } },
+            dismissButton = { TextButton(onClick = { editTarget = null }) { Text(stringResource(R.string.common_close)) } },
         )
     }
 

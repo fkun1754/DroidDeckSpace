@@ -327,6 +327,8 @@ public final class ContainerRuntime {
         prepare(context, spec);
         List<String> binds = ContainerEnv.binds(context, spec);
         cleanStaleContainerConfig(context, name);
+        java.util.Map<String, String> preservedConfig =
+                com.droiddeck.launcher.runtime.ContainerConfigStore.INSTANCE.snapshot(context, name);
         DroidspacesCli.ContainerSpec cliSpec = DroidspacesCli.ContainerSpec
                 .builder(name, ContainerPaths.rootfs(context))
                 .init(ContainerPaths.GUEST_INIT)
@@ -336,6 +338,7 @@ public final class ContainerRuntime {
         if (!result.ok()) {
             if (looksLikeNameConflict(result) || isRunning(context)) {
                 com.droiddeck.launcher.runtime.ContainerBootConfig.INSTANCE.restore(context, name);
+                com.droiddeck.launcher.runtime.ContainerConfigStore.INSTANCE.restore(context, name, preservedConfig);
                 return new ContainerSession(name, spec.sessionId());
             }
             throw new IllegalStateException("cannot start container '" + name + "'\n"
@@ -344,6 +347,7 @@ public final class ContainerRuntime {
         try {
             awaitReady(context, name);
             com.droiddeck.launcher.runtime.ContainerBootConfig.INSTANCE.restore(context, name);
+            com.droiddeck.launcher.runtime.ContainerConfigStore.INSTANCE.restore(context, name, preservedConfig);
         } catch (RuntimeException failure) {
             try {
                 DroidspacesCli.stop(name);

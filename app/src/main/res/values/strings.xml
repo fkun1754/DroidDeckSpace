@@ -3897,4 +3897,14 @@
     <string name="storage_runtime_cache_clear">Clear cache</string>
     <string name="storage_runtime_cache_empty">No cached runtime files</string>
     <string name="runtime_mgr_days_forever">Forever</string>
+
+    <string name="runtime_mgr_edit_title">Runtime configuration</string>
+    <string name="runtime_mgr_edit_hint">Options are applied to the DroidSpaces container after the next start.</string>
+    <string name="runtime_mgr_longpress_hint">Long-press a runtime to change its configuration</string>
+    <string name="runtime_cfg_ipv6">Disable IPv6</string>
+    <string name="runtime_cfg_swap">Allow swap</string>
+    <string name="runtime_cfg_cgroup">Force cgroup v1</string>
+    <string name="runtime_cfg_selinux">SELinux permissive</string>
+    <string name="runtime_cfg_sandbox">Allow sandboxing</string>
+    <string name="runtime_cfg_vts">Allow VTS</string>
 </resources>

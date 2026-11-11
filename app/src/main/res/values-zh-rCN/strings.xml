@@ -3709,4 +3709,14 @@
     <string name="storage_runtime_cache_clear">清理缓存</string>
     <string name="storage_runtime_cache_empty">没有缓存文件</string>
     <string name="runtime_mgr_days_forever">永久</string>
+
+    <string name="runtime_mgr_edit_title">更改运行时配置</string>
+    <string name="runtime_mgr_edit_hint">这些选项会在容器下次启动后生效。</string>
+    <string name="runtime_mgr_longpress_hint">长按运行时可以修改配置</string>
+    <string name="runtime_cfg_ipv6">禁用 IPv6</string>
+    <string name="runtime_cfg_swap">允许交换</string>
+    <string name="runtime_cfg_cgroup">强制 cgroup v1</string>
+    <string name="runtime_cfg_selinux">SELinux Permissive</string>
+    <string name="runtime_cfg_sandbox">允许沙箱</string>
+    <string name="runtime_cfg_vts">允许 VTS</string>
 </resources>
