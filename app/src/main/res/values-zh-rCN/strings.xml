@@ -3735,4 +3735,9 @@
     <string name="official_feed_stable">稳定版</string>
     <string name="official_feed_preview">预览版</string>
     <string name="official_feed_more">展开全文</string>
+
+    <string name="official_feed_refresh">刷新</string>
+
+    <string name="desktop_password_settings_hint">设置或修改桌面普通用户 droiddeck 的密码（用于 sudo）。</string>
+    <string name="desktop_password_change">设置 / 修改</string>
 </resources>

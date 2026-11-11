@@ -46,8 +46,8 @@ object OfficialDeckFeed {
     private const val KEY_JSON = "json"
     private const val KEY_AT = "at"
     private const val CACHE_MS = 60L * 60L * 1000L
-    private const val STABLE = "https://api.github.com/repos/Droid-Deck/DroidDeck/releases?per_page=5"
-    private const val PREVIEW = "https://api.github.com/repos/Droid-Deck/DroidDeck-CI/releases?per_page=5"
+    private const val STABLE = "https://github.com/Droid-Deck/DroidDeck/releases.atom"
+    private const val PREVIEW = "https://github.com/Droid-Deck/DroidDeck-CI/releases.atom"
 
     fun load(context: android.content.Context, force: Boolean = false): List<Item> {
         val prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
@@ -67,24 +67,23 @@ object OfficialDeckFeed {
 
     private fun fetch(url: String, stable: Boolean): Item? {
         val body = Downloader.downloadString(url) ?: return null
-        val array = runCatching { JSONArray(body) }.getOrNull() ?: return null
-        for (i in 0 until array.length()) {
-            val o = array.optJSONObject(i) ?: continue
-            if (o.optBoolean("draft")) continue
-            if (stable && o.optBoolean("prerelease")) continue
-            val tag = o.optString("tag_name").ifBlank { o.optString("name") }
-            if (tag.isBlank()) continue
-            return Item(
-                stable = stable, tag = tag,
-                title = o.optString("name").ifBlank { tag },
-                notes = o.optString("body"),
-                published = o.optString("published_at").let { raw ->
-                    runCatching { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ROOT).parse(raw.take(19))?.time }.getOrNull() ?: 0L
-                },
-            )
+        val entry = Regex("<entry>(.*?)</entry>", RegexOption.DOT_MATCHES_ALL).find(body)?.groupValues?.get(1) ?: return null
+        fun tag(name: String): String =
+            Regex("<" + name + "[^>]*>(.*?)</" + name + ">", RegexOption.DOT_MATCHES_ALL).find(entry)
+                ?.groupValues?.get(1)?.trim().orEmpty()
+        val title = tag("title").ifBlank { return null }
+        val updated = tag("updated")
+        val content = tag("content")
+        val notes = decode(content).replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim()
+        val published = updated.take(19).let { raw ->
+            runCatching { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ROOT).parse(raw)?.time }.getOrNull() ?: 0L
         }
-        return null
+        return Item(stable = stable, tag = title, title = title, notes = notes, published = published)
     }
+
+    private fun decode(text: String): String = text
+        .replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'")
+        .replace("&amp;", "&")
 
     private fun toJson(items: List<Item>): String {
         val array = JSONArray()
@@ -107,15 +106,20 @@ internal fun OfficialFeed() {
     var items by remember { mutableStateOf<List<OfficialDeckFeed.Item>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var open by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
-        items = withContext(Dispatchers.IO) { OfficialDeckFeed.load(ctx) }
+    var revision by remember { mutableStateOf(0) }
+    LaunchedEffect(revision) {
+        loading = true
+        items = withContext(Dispatchers.IO) { OfficialDeckFeed.load(ctx, force = revision > 0) }
         loading = false
     }
     val colors = MaterialTheme.colorScheme
-    Text(
-        stringResource(R.string.official_feed_title), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-        color = colors.onSurface, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp),
-    )
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text(
+            stringResource(R.string.official_feed_title), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+            color = colors.onSurface, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp).weight(1f),
+        )
+        TextButton(onClick = { revision++ }, enabled = !loading) { Text(stringResource(R.string.official_feed_refresh)) }
+    }
     if (loading) {
         Text(stringResource(R.string.official_feed_loading), fontSize = 13.sp, color = colors.onSurfaceVariant)
         return

@@ -3923,4 +3923,9 @@
     <string name="official_feed_stable">STABLE</string>
     <string name="official_feed_preview">PREVIEW</string>
     <string name="official_feed_more">Read more</string>
+
+    <string name="official_feed_refresh">Refresh</string>
+
+    <string name="desktop_password_settings_hint">Set or change the password of the normal desktop user droiddeck (sudo).</string>
+    <string name="desktop_password_change">Set / change</string>
 </resources>

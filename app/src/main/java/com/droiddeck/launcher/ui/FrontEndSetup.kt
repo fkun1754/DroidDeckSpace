@@ -425,6 +425,7 @@ internal fun SetupPanel(
                         var containerCliOk by remember { mutableStateOf(if (com.droiddeck.launcher.runtime.RuntimeStatus.checked) com.droiddeck.launcher.runtime.RuntimeStatus.droidspaces else null) }
                         var containerRechecking by remember { mutableStateOf(false) }
                         var showRuntimeManager by remember { mutableStateOf(false) }
+                        var showDesktopPassword by remember { mutableStateOf(false) }
                         val containerScope = rememberCoroutineScope()
                         val activeInstalledVersion = com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.installedVersion(containerCtx)
                         val runtimeUpdateAvailable = activeInstalledVersion != null && s.available != null && s.available != activeInstalledVersion
@@ -544,6 +545,19 @@ internal fun SetupPanel(
                                         ) { showRuntimeManager = true }
                                     },
                                 )
+                                CheckRow(
+                                    CheckState.OK,
+                                    stringResource(R.string.desktop_password_title),
+                                    stringResource(R.string.desktop_password_settings_hint),
+                                    action = {
+                                        SecondaryButton(
+                                            stringResource(R.string.desktop_password_change),
+                                            compact = true,
+                                            enabled = !s.busy && !s.sessionRunning,
+                                        ) { showDesktopPassword = true }
+                                    },
+                                )
+                                if (showDesktopPassword) DesktopPasswordDialog(onDismiss = { showDesktopPassword = false })
                                 RuntimeManagerSection(
                                     show = showRuntimeManager,
                                     onDismiss = { showRuntimeManager = false },
