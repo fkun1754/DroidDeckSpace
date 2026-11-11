@@ -414,6 +414,27 @@ rm -f "${XDG_RUNTIME_DIR:-/run/droiddeck}/droiddeck-remote-play"
 if [ "$mode" = lxqt ] || [ "$mode" = desktop ]; then
   /usr/local/bin/droiddeck-desktop-bookmarks || true
   /usr/local/bin/droiddeck-downloads || true
+  # Desktop sharing (krfb) and KWin's screencast framebuffer need a running PipeWire.
+  # Use the system PipeWire here: the bundled droiddeck-pipewire instance is meant for Steam
+  # Remote Play and does not keep its socket stable in desktop sessions.
+  if command -v pipewire >/dev/null 2>&1; then
+    # Dedicated PipeWire core for desktop sharing: a fixed socket name keeps other PipeWire
+    # instances from removing pipewire-0 under us. KWin/KPipeWire and krfb inherit these values.
+    # Dedicated runtime dir + absolute remote: other PipeWire instances cannot unlink this socket.
+    pw_dir="/tmp/droiddeck-pw"
+    mkdir -p "$pw_dir"
+    chmod 700 "$pw_dir" 2>/dev/null || true
+    export PIPEWIRE_CORE=droiddeck-vnc
+    export PIPEWIRE_REMOTE="$pw_dir/droiddeck-vnc"
+    env -u PIPEWIRE_CONFIG_DIR -u PIPEWIRE_MODULE_DIR -u SPA_PLUGIN_DIR \
+      XDG_RUNTIME_DIR="$pw_dir" PIPEWIRE_CORE=droiddeck-vnc pipewire >/dev/null 2>&1 &
+    command -v wireplumber >/dev/null 2>&1 && env -u PIPEWIRE_CONFIG_DIR -u PIPEWIRE_MODULE_DIR \
+      -u SPA_PLUGIN_DIR XDG_RUNTIME_DIR="$pw_dir" PIPEWIRE_CORE=droiddeck-vnc \
+      PIPEWIRE_REMOTE="$pw_dir/droiddeck-vnc" wireplumber >/dev/null 2>&1 &
+    echo "== pipewire: started droiddeck-vnc for desktop sharing"
+  else
+    echo "== pipewire: not installed; desktop sharing has no picture"
+  fi
 fi
 export FLATPAK_BWRAP=/usr/local/bin/droiddeck-bwrap
 export XDG_DATA_DIRS=$XDG_DATA_HOME/flatpak/exports/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
