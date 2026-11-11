@@ -792,7 +792,7 @@ internal fun SessionDrawer(open: Boolean, requestedPage: SessionDrawerPage, cont
                                     }
                                 }
                             }
-                            if (a.desktop) SettingsGroup(stringResource(R.string.desktop_password_title)) {
+                            SettingsGroup(stringResource(R.string.desktop_password_title)) {
                                 SettingsRow(
                                     stringResource(R.string.desktop_password_title),
                                     stringResource(R.string.desktop_password_settings_hint),

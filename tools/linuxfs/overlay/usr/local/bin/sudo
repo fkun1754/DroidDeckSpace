@@ -14,6 +14,8 @@ known_user() {
 
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games
 login=0 shell=0 edit=0 background=0 dir=
+noninteractive=0
+validate=0
 [ "$me" = sudoedit ] && edit=1
 while [ $# -gt 0 ]; do
   case $1 in
@@ -21,12 +23,14 @@ while [ $# -gt 0 ]; do
     -h|--help) usage; exit 0 ;;
     -V|--version) echo "DroidDeck sudo: runs commands as root inside the DroidDeck desktop"; exit 0 ;;
     -l|--list) echo "User $(id -un 2>/dev/null) may run the following commands on $(uname -n):"; echo "    (ALL : ALL) ALL"; exit 0 ;;
-    -v|--validate|-K|--remove-timestamp) exit 0 ;;
+    -v|--validate) validate=1; shift ;;
+    -K|--remove-timestamp) exit 0 ;;
     -k|--reset-timestamp) shift; [ $# -eq 0 ] && exit 0 ;;
     -i|--login) login=1; shift ;;
     -s|--shell) shell=1; shift ;;
     -e|--edit) edit=1; shift ;;
     -b|--background) background=1; shift ;;
+    -n|--non-interactive) noninteractive=1; shift ;;
     -E|--preserve-env|--preserve-env=*|-H|--set-home|-P|--preserve-groups|-A|--askpass|-B|--bell|-N|--no-update) shift ;;
     -u|--user|-g|--group) [ $# -ge 2 ] || { usage >&2; exit 1; }; known_user "$2"; shift 2 ;;
     --user=*|--group=*) known_user "${1#*=}"; shift ;;
@@ -103,6 +107,11 @@ if [ "$(id -u)" != 0 ]; then
     fi
     : > "$ts"; chmod 600 "$ts" 2>/dev/null || true
   fi
+fi
+[ "$validate" = 1 ] && exit 0
+if [ "$login" = 1 ] && [ $# -eq 0 ]; then
+  echo "$me: interactive root shell is not supported here; use sudo <command>" >&2
+  exit 1
 fi
 if [ "$(id -u)" = 0 ]; then
   [ "$background" = 1 ] && { "$@" & exit 0; }
