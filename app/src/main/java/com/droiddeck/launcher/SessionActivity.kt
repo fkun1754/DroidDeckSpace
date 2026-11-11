@@ -2311,10 +2311,15 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                     first != again -> android.widget.Toast.makeText(context, R.string.desktop_password_mismatch, android.widget.Toast.LENGTH_SHORT).show()
                     else -> {
                         com.droiddeck.launcher.runtime.DesktopPassword.markPrompted(context)
-                        pendingDesktopPassword = first
-                        passwordWizardBlocking = false
                         dialog.dismiss()
-                        startGuestSession()
+                        Thread({
+                            val error = com.droiddeck.launcher.runtime.DesktopPassword.set(context, first)
+                            runOnUiThread {
+                                if (error != null) android.widget.Toast.makeText(context, error, android.widget.Toast.LENGTH_LONG).show()
+                                passwordWizardBlocking = false
+                                startGuestSession()
+                            }
+                        }, "desktop-password-first-run").start()
                     }
                 }
             }

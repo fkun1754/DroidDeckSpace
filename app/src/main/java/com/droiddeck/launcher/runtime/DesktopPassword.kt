@@ -33,8 +33,12 @@ object DesktopPassword {
                 "echo 'droiddeck:x:10490:10490::/home/droiddeck:/bin/bash' >> /etc/passwd; " +
                 "echo 'droiddeck:$escaped' | chpasswd || exit 1; " +
                 "command -v sudo >/dev/null || apt-get install -y -qq sudo >/dev/null 2>&1 || true; " +
+                "groupadd -f sudo 2>/dev/null || true; " +
                 "usermod -aG sudo droiddeck 2>/dev/null || true; " +
-                "passwd -S droiddeck 2>/dev/null | head -1"
+                "if [ -x /usr/bin/sudo ]; then echo 'droiddeck ALL=(ALL:ALL) ALL' > /etc/sudoers.d/90-droiddeck; " +
+                "chmod 0440 /etc/sudoers.d/90-droiddeck; fi; " +
+                "passwd -S droiddeck 2>/dev/null | head -1; " +
+                "grep -q '^droiddeck:' /etc/shadow || exit 3"
             val result = ContainerRuntime.exec(context, listOf("/bin/sh", "-c", script), 180_000)
             if (!result.ok()) return "设置密码失败：" + result.combined()
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_SET, true).apply()
