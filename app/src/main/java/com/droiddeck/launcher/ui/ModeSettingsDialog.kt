@@ -372,6 +372,20 @@ fun ModeSheetRows(s: ModeSettings, a: ModeSettingsActions, tab: String, extras: 
                 ), s.startupSession, onPick = a.onStartupSession,
             )
         }
+        if (!steam) {
+            var showDesktopPassword by remember { mutableStateOf(false) }
+            SettingsGroup(stringResource(R.string.desktop_password_title)) {
+                SettingsRow(
+                    stringResource(R.string.desktop_password_title),
+                    stringResource(R.string.desktop_password_settings_hint),
+                ) {
+                    SecondaryButton(
+                        stringResource(R.string.desktop_password_change), compact = true,
+                    ) { showDesktopPassword = true }
+                }
+            }
+            if (showDesktopPassword) DesktopPasswordDialog(onDismiss = { showDesktopPassword = false })
+        }
         extras.performance()
     }
     if (tab == SheetTab.LIBRARY && steam) {
