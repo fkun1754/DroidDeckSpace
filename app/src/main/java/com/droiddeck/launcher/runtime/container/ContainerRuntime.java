@@ -335,6 +335,7 @@ public final class ContainerRuntime {
         ExecResult result = DroidspacesCli.start(cliSpec);
         if (!result.ok()) {
             if (looksLikeNameConflict(result) || isRunning(context)) {
+                com.droiddeck.launcher.runtime.ContainerBootConfig.INSTANCE.restore(context, name);
                 return new ContainerSession(name, spec.sessionId());
             }
             throw new IllegalStateException("cannot start container '" + name + "'\n"
@@ -342,6 +343,7 @@ public final class ContainerRuntime {
         }
         try {
             awaitReady(context, name);
+            com.droiddeck.launcher.runtime.ContainerBootConfig.INSTANCE.restore(context, name);
         } catch (RuntimeException failure) {
             try {
                 DroidspacesCli.stop(name);
@@ -351,6 +353,16 @@ public final class ContainerRuntime {
             throw failure;
         }
         return new ContainerSession(name, spec.sessionId());
+    }
+
+    /** Background warm-up so the first session does not pay the root probe/su start-up cost. */
+    public static void warmUp(Context context) {
+        try {
+            if (!isAvailable(context)) return;
+            SuShell.exec("true", 10_000);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "runtime warm-up failed: " + e);
+        }
     }
 
     public static ExecResult exec(Context context, List<String> argv, int timeoutMs) {

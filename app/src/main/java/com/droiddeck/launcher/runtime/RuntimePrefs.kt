@@ -47,6 +47,13 @@ object RuntimePrefs {
             .apply()
     }
 
+    fun containerBoot(context: Context, container: String): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("boot_$container", false)
+
+    fun setContainerBoot(context: Context, container: String, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("boot_$container", enabled).apply()
+    }
+
     fun runAtBoot(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_RUN_AT_BOOT, false)
 

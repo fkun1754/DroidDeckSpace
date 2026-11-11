@@ -11,7 +11,15 @@ object ContainerBootConfig {
     private fun config(context: Context, container: String) =
         "/data/local/Droidspaces/Containers/" + SuShell.quote(container) + "/container.config"
 
+    /** DroidSpaces regenerates container.config when the app starts a container with --reset, so the
+     * user's boot preference is kept in RuntimePrefs and written back after each start. */
+    fun restore(context: Context, container: String) {
+        if (!RuntimePrefs.containerBoot(context, container)) return
+        setRunAtBoot(context, container, true)
+    }
+
     fun runAtBoot(context: Context, container: String): Boolean {
+        if (RuntimePrefs.containerBoot(context, container)) return true
         if (container.isBlank()) return false
         val result = SuShell.exec(
             "grep -E '^run_at_boot=' " + config(context, container) + " 2>/dev/null | tail -1",

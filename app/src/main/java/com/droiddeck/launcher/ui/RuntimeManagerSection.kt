@@ -69,6 +69,14 @@ internal fun RuntimeManagerSection(
     var renameTarget by remember { mutableStateOf<RuntimeStore.Entry?>(null) }
     var renameText by remember { mutableStateOf("") }
     var renameError by remember { mutableStateOf<String?>(null) }
+    var clearCacheOnClose by remember { mutableStateOf(false) }
+    fun closeManager() {
+        if (clearCacheOnClose) {
+            clearCacheOnClose = false
+            Thread({ com.droiddeck.launcher.runtime.RuntimeCache.clear(ctx) }, "runtime-cache-clear").start()
+        }
+        onDismiss()
+    }
     LaunchedEffect(show) { if (!show) sub = null }
     fun refresh() {
         runtimes = RuntimeStore.entries(ctx)
@@ -123,7 +131,7 @@ internal fun RuntimeManagerSection(
     }
 
     AlertDialog(
-        onDismissRequest = { if (!working) onDismiss() },
+        onDismissRequest = { if (!working) closeManager() },
         title = { Text(stringResource(R.string.runtime_mgr_manage)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -149,7 +157,9 @@ internal fun RuntimeManagerSection(
                     Switch(checked = keepCache, onCheckedChange = {
                         keepCache = it
                         RuntimePrefs.setCacheEnabled(ctx, it)
-                        if (!it) com.droiddeck.launcher.runtime.RuntimeCache.clear(ctx)
+                        // Do not delete immediately: the user may still be inspecting sizes. The
+                        // cache is cleared when the Linux container management panel is closed.
+                        clearCacheOnClose = !it
                     })
                 }
                 if (keepCache) {
@@ -218,7 +228,7 @@ internal fun RuntimeManagerSection(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_close)) } },
+        confirmButton = { TextButton(onClick = { closeManager() }) { Text(stringResource(R.string.common_close)) } },
     )
 
     if (sub == "repair") {
