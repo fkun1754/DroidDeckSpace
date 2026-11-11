@@ -367,5 +367,13 @@
                 android:name="backend:com.google.android.datatransport.cct.CctBackendFactory"
                 tools:node="remove" />
         </service>
-</application>
+        <receiver
+            android:name=".runtime.RuntimeBootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
 </manifest>

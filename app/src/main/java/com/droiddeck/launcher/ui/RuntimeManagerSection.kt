@@ -69,7 +69,6 @@ internal fun RuntimeManagerSection(
     var editTarget by remember { mutableStateOf<RuntimeStore.Entry?>(null) }
     var renameText by remember { mutableStateOf("") }
     var renameError by remember { mutableStateOf<String?>(null) }
-    var editBoot by remember { mutableStateOf(false) }
     var clearCacheOnClose by remember { mutableStateOf(false) }
     fun closeManager() {
         if (clearCacheOnClose) {
@@ -136,20 +135,28 @@ internal fun RuntimeManagerSection(
         title = { Text(stringResource(R.string.runtime_mgr_manage)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                var runAtBoot by remember { mutableStateOf(false) }
-                LaunchedEffect(show) {
-                    runAtBoot = withContext(Dispatchers.IO) {
-                        active?.let { com.droiddeck.launcher.runtime.ContainerBootConfig.runAtBoot(ctx, it.container) } ?: false
-                    }
-                }
                 var keepRunning by remember { mutableStateOf(RuntimePrefs.keepRunning(ctx)) }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.runtime_mgr_run_at_boot), fontSize = 14.sp, modifier = Modifier.weight(1f))
-                    Switch(checked = runAtBoot, onCheckedChange = { runAtBoot = it; RuntimePrefs.setRunAtBoot(ctx, it) })
-                }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.runtime_mgr_keep_running), fontSize = 14.sp, modifier = Modifier.weight(1f))
                     Switch(checked = keepRunning, onCheckedChange = { keepRunning = it; RuntimePrefs.setKeepRunning(ctx, it) })
+                }
+                var bootRuntime by remember { mutableStateOf(RuntimePrefs.runAtBoot(ctx)) }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.runtime_mgr_run_at_boot), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = bootRuntime, enabled = active != null && !working, onCheckedChange = { checked ->
+                        bootRuntime = checked
+                        RuntimePrefs.setRunAtBoot(ctx, checked)
+                        val entry = active
+                        if (entry != null) {
+                            RuntimePrefs.setContainerBoot(ctx, entry.container, checked)
+                            scope.launch {
+                                val error = withContext(Dispatchers.IO) {
+                                    com.droiddeck.launcher.runtime.ContainerBootConfig.setRunAtBoot(ctx, entry.container, checked)
+                                }
+                                if (error != null) message = error
+                            }
+                        }
+                    })
                 }
                 var keepCache by remember { mutableStateOf(RuntimePrefs.cacheEnabled(ctx)) }
                 var cacheDays by remember { mutableStateOf(RuntimePrefs.cacheRetentionDays(ctx)) }
@@ -244,11 +251,6 @@ internal fun RuntimeManagerSection(
     }
 
     editTarget?.let { target ->
-        LaunchedEffect(target.container) {
-            editBoot = withContext(Dispatchers.IO) {
-                com.droiddeck.launcher.runtime.ContainerBootConfig.runAtBoot(ctx, target.container)
-            }
-        }
         AlertDialog(
             onDismissRequest = { editTarget = null },
             title = { Text(stringResource(R.string.runtime_mgr_edit_title)) },
@@ -261,20 +263,6 @@ internal fun RuntimeManagerSection(
                         isError = renameError != null,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     )
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.runtime_mgr_run_at_boot), fontSize = 14.sp, modifier = Modifier.weight(1f))
-                        Switch(checked = editBoot, onCheckedChange = { checked ->
-                            editBoot = checked
-                            // Always remember the choice; the config is (re)written after the next start.
-                            com.droiddeck.launcher.runtime.RuntimePrefs.setContainerBoot(ctx, target.container, checked)
-                            scope.launch {
-                                val error = withContext(Dispatchers.IO) {
-                                    com.droiddeck.launcher.runtime.ContainerBootConfig.setRunAtBoot(ctx, target.container, checked)
-                                }
-                                if (error != null) message = error
-                            }
-                        })
-                    }
                     Text(stringResource(R.string.runtime_mgr_edit_hint), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
