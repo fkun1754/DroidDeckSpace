@@ -48,8 +48,18 @@ class App : Application() {
         Thread({
             runCatching {
                 // Detection runs once during the first configuration. Later launches use the
-                // persisted result; "Re-check" in Setup refreshes it.
-                if (com.droiddeck.launcher.runtime.RuntimeStatus.checked) return@runCatching
+                // persisted result; the root bridge is warmed in the background so a session start
+                // does not pay the ~6 s su probe again.
+                if (com.droiddeck.launcher.runtime.RuntimeStatus.checked) {
+                    if (com.droiddeck.launcher.runtime.RuntimeStatus.root &&
+                        com.droiddeck.launcher.runtime.RuntimeStatus.droidspaces
+                    ) {
+                        Thread({
+                            runCatching { com.droiddeck.launcher.runtime.container.ContainerRuntime.warmUp(this) }
+                        }, "runtime-warmup").start()
+                    }
+                    return@runCatching
+                }
                 val available = com.droiddeck.launcher.runtime.container.ContainerRuntime.isAvailable(this)
                 com.droiddeck.launcher.runtime.RuntimeStatus.publish(
                     this,
