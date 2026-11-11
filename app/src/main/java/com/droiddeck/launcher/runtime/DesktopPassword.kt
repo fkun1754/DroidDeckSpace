@@ -31,12 +31,13 @@ object DesktopPassword {
             val escaped = password.replace("'", "'\\''")
             val script = "grep -q '^droiddeck:' /etc/passwd || " +
                 "echo 'droiddeck:x:10490:10490::/home/droiddeck:/bin/bash' >> /etc/passwd; " +
-                "echo 'droiddeck:$escaped' | chpasswd || exit 1; " +
-                "command -v sudo >/dev/null || apt-get install -y -qq sudo >/dev/null 2>&1 || true; " +
+                "PW='" + escaped + "'; " +
+                "hash=$(printf '%s' \"\$PW\" | /usr/bin/openssl passwd -6 -stdin) || exit 1; " +
+                "echo \"droiddeck:\$hash\" | chpasswd -e || exit 1; " +
                 "groupadd -f sudo 2>/dev/null || true; " +
                 "usermod -aG sudo droiddeck 2>/dev/null || true; " +
-                "if [ -x /usr/bin/sudo ]; then echo 'droiddeck ALL=(ALL:ALL) ALL' > /etc/sudoers.d/90-droiddeck; " +
-                "chmod 0440 /etc/sudoers.d/90-droiddeck; fi; " +
+                "echo 'droiddeck ALL=(ALL:ALL) ALL' > /etc/sudoers.d/90-droiddeck; " +
+                "chmod 0440 /etc/sudoers.d/90-droiddeck; " +
                 "passwd -S droiddeck 2>/dev/null | head -1; " +
                 "grep -q '^droiddeck:' /etc/shadow || exit 3"
             val result = ContainerRuntime.exec(context, listOf("/bin/sh", "-c", script), 180_000)

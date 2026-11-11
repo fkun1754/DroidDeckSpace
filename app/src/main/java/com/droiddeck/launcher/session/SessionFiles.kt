@@ -37,6 +37,11 @@ object SessionFiles {
         catch (e: Exception) { Log.w(TAG, "LXQt cleanup will retry next session", e) }
         runCatching { com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.ensureL2sHardlinks(root) }
             .onFailure { Log.w(TAG, "l2s repair will retry next session", it) }
+        runCatching {
+            val socketFile = File(root, "etc/droiddeck/root-socket")
+            socketFile.parentFile?.mkdirs()
+            socketFile.writeText(context.packageName + ".root")
+        }.onFailure { Log.w(TAG, "could not write the root socket name", it) }
         GameEnvironmentStore.publish(context)
         WinComponents.publish(context)
         val files = arrayOf(
@@ -80,6 +85,8 @@ object SessionFiles {
             "usr/local/bin/droiddeck-desktop-bookmarks" to "usr/local/bin/droiddeck-desktop-bookmarks",
             "usr/local/bin/droiddeck-downloads" to "usr/local/bin/droiddeck-downloads",
             "usr/local/bin/droiddeck-root" to "usr/local/bin/droiddeck-root",
+            "usr/local/bin/sudo" to "usr/local/bin/sudo",
+            "usr/local/bin/droiddeck-password-check" to "usr/local/bin/droiddeck-password-check",
             "usr/local/bin/droiddeck-text" to "usr/local/bin/droiddeck-text",
             "usr/local/bin/droiddeck-snapd" to "usr/local/bin/droiddeck-snapd",
             "usr/local/bin/droiddeck-emulators" to "usr/local/bin/droiddeck-emulators",
