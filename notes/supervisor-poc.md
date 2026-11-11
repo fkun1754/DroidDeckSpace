@@ -59,3 +59,15 @@ kwin_wayland --virtual --socket wayland-desktop --no-lockscreen
   1. Pre-seed the xdg-desktop-portal permission store for krfb's app id.
   2. Bypass the portal with a direct KWin screencast client (`zkde_screencast_unstable_v1`).
   3. Keep krfb only as a fallback and implement the foreground pipewire path first.
+
+## Portal ScreenCast authorization attempt
+
+- The permission store service is `/usr/libexec/xdg-permission-store`; its object path is
+  `/org/freedesktop/impl/portal/PermissionStore` (not `/org/freedesktop/portal/desktop`).
+  Interface: `SetPermission(s table, b create, s id, s app, as permissions)`.
+- Pre-seeding `screencast` entries for `org.kde.krfb` / `krfb` / empty did not help.
+- krfb still logs `Failed to start screencast: 2`; `xdg-desktop-portal-kde` crashes while
+  handling the request (KCrash), so the portal returns a cancelled/failed response.
+- Because the KDE portal backend itself crashes under the headless root session, the practical
+  next step is a direct KWin screencast client (`zkde_screencast_unstable_v1`) instead of the
+  portal; that also removes the approval dialog dependency for the foreground render path.
