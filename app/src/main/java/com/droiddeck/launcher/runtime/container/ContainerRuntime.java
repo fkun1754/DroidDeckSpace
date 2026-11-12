@@ -253,8 +253,22 @@ public final class ContainerRuntime {
     /** Keeps a container alive for one-shot commands while no session runs (DD_MODE=service). */
     /** True when the named container is running the supervisor (not a legacy session container). */
     public static boolean isSupervisorRunning(Context context) {
-        if (!DroidspacesCli.RUNNING.equals(DroidspacesCli.state(ContainerPaths.containerName(context)))) return false;
-        return supervisorFile(context, "supervisor.fifo").exists();
+        String name = ContainerPaths.containerName(context);
+        if (!DroidspacesCli.RUNNING.equals(DroidspacesCli.state(name))) return false;
+        String status = readSupervisorStatus(context);
+        return !status.isEmpty();
+    }
+
+    private static android.content.SharedPreferences supervisorPrefs(Context context) {
+        return context.getSharedPreferences("runtime_store", Context.MODE_PRIVATE);
+    }
+
+    private static long supervisorInstallTime(Context context) {
+        try {
+            return context.getPackageManager().getPackageInfo(context.getPackageName(), 0).lastUpdateTime;
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private static java.io.File supervisorFile(Context context, String name) {
@@ -262,12 +276,28 @@ public final class ContainerRuntime {
     }
 
     private static void writeSupervisorCommand(Context context, String command) {
-        java.io.File fifo = supervisorFile(context, "supervisor.fifo");
-        try (java.io.FileOutputStream out = new java.io.FileOutputStream(fifo)) {
-            out.write((command + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            out.flush();
+        java.io.File commandFile = supervisorFile(context, "supervisor.cmd");
+        java.io.File temp = supervisorFile(context, "supervisor.cmd.tmp");
+        try {
+            temp.getParentFile().mkdirs();
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(temp)) {
+                out.write((command + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            if (!temp.renameTo(commandFile)) {
+                throw new java.io.IOException("cannot replace " + commandFile);
+            }
         } catch (java.io.IOException e) {
             throw new IllegalStateException("cannot send '" + command + "' to the supervisor: " + e, e);
+        }
+    }
+
+    private static String readSupervisorStatus(Context context) {
+        java.io.File file = supervisorFile(context, "supervisor.status");
+        try {
+            return file.isFile() ? new String(java.nio.file.Files.readAllBytes(file.toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8).trim() : "";
+        } catch (java.io.IOException e) {
+            return "";
         }
     }
 
@@ -286,11 +316,21 @@ public final class ContainerRuntime {
                 ? SessionSpec.builder().mode(SessionSpec.MODE_DESKTOP).build() : session;
         synchronized (START_LOCK) {
             String name = ContainerPaths.containerName(context);
+            long appUpdated = supervisorInstallTime(context);
+            long supervisorUpdated = supervisorPrefs(context).getLong("app_updated", 0);
+            if (isSupervisorRunning(context) && supervisorUpdated != appUpdated) {
+                Log.i(TAG, "the supervisor container predates this app update; restarting it");
+                stopContainer(context, name);
+            }
             if (!isSupervisorRunning(context)) {
                 if (DroidspacesCli.RUNNING.equals(DroidspacesCli.state(name))) {
                     Log.w(TAG, "stopping the legacy container '" + name + "' before starting the supervisor");
                     stopContainer(context, name);
                 }
+                supervisorFile(context, "supervisor.status").delete();
+                supervisorFile(context, "supervisor.cmd").delete();
+                supervisorFile(context, "session.pid").delete();
+                supervisorFile(context, "session.exit").delete();
                 SessionSpec supervisorSpec = SessionSpec.builder()
                         .mode("supervisor")
                         .sessionId(spec.sessionId())
@@ -316,23 +356,43 @@ public final class ContainerRuntime {
                             + result.describe() + "\n" + diagnostics(context, name));
                 }
                 awaitReady(context, name);
+                supervisorPrefs(context).edit().putLong("app_updated", appUpdated).apply();
             }
-            // The init reports ready just before exec'ing the supervisor; wait for its FIFO.
-            java.io.File fifo = supervisorFile(context, "supervisor.fifo");
-            for (int i = 0; i < 100 && !fifo.exists(); i++) {
+            // Wait until the supervisor has written its first status line.
+            long readyDeadline = System.currentTimeMillis() + 10_000;
+            while (System.currentTimeMillis() < readyDeadline && readSupervisorStatus(context).isEmpty()) {
                 try {
-                    Thread.sleep(50);
+                    Thread.sleep(100);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
                 }
             }
-            if (!fifo.exists()) {
-                throw new IllegalStateException("the supervisor did not create " + fifo);
+            if (readSupervisorStatus(context).isEmpty()) {
+                throw new IllegalStateException("the supervisor did not become ready");
             }
             // The supervisor reads these just before launching the session child.
             prepare(context, spec);
             writeSupervisorCommand(context, "start");
+            long deadline = System.currentTimeMillis() + 15_000;
+            boolean started = false;
+            while (System.currentTimeMillis() < deadline) {
+                String status = readSupervisorStatus(context);
+                if (status.startsWith("running") || status.startsWith("starting")) {
+                    started = true;
+                    break;
+                }
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            if (!started) {
+                throw new IllegalStateException("the supervisor did not start the session (status: "
+                        + readSupervisorStatus(context) + ")");
+            }
             return new ContainerSession(name, spec.sessionId(), true);
         }
     }

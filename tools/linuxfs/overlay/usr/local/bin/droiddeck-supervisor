@@ -3,7 +3,7 @@
 # Keeps the container (and optional base services such as DSH) alive while sessions are
 # started/stopped on demand. A session is a child process; stopping it never stops this container.
 BASE=/dd/container
-FIFO="$BASE/supervisor.fifo"
+CMD_FILE="$BASE/supervisor.cmd"
 STATUS="$BASE/supervisor.status"
 LOG="$BASE/supervisor.log"
 SESSION_LOG="$BASE/session.log"
@@ -93,16 +93,15 @@ start_base_services() {
 }
 
 session_env
-rm -f "$FIFO"
-mkfifo "$FIFO" || { log "cannot create FIFO"; exit 1; }
-chown "$DD_UID:$DD_GID" "$FIFO" 2>/dev/null || true
-chmod 660 "$FIFO" 2>/dev/null || true
+rm -f "$CMD_FILE"
 echo "supervisor ready pid=$$" >"$STATUS"
 log "supervisor ready pid=$$"
 start_base_services
 
 while :; do
-  if IFS= read -r line <"$FIFO"; then
+  if [ -f "$CMD_FILE" ]; then
+    line=$(cat "$CMD_FILE" 2>/dev/null)
+    rm -f "$CMD_FILE"
     case "$line" in
       start|"start "*)
         start_session
@@ -121,6 +120,7 @@ while :; do
       *) log "unknown command: $line" ;;
     esac
   fi
+  sleep 0.3
   # Reap a finished session without blocking.
   if [ -n "$session_pid" ] && ! kill -0 "$session_pid" 2>/dev/null; then
     wait "$session_pid" 2>/dev/null
