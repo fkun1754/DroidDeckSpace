@@ -122,10 +122,24 @@ object DesktopCatalog {
             !File(LinuxRuntime.rootDir(context), "root/.local/share/Steam/steamapps/appmanifest_4427310.acf").isFile
 
     const val DESKTOP_ID = "desktop-kde"
+    const val ARCH_DESKTOP_ID = "desktop"
+    private const val ARCH_DESKTOP_TAG = "steamdeck-desktop-r1"
+    private const val ARCH_DESKTOP_URL =
+        "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/steamdeck-desktop-r1/desktop.tar.zst"
+    private const val ARCH_DESKTOP_SHA256 =
+        "c2bb860b3b1688287451e2495be5db313ec07f8c8af501dfac2768a9f417bc86"
+    private const val ARCH_DESKTOP_SIZE = 426049032L
     const val EMULATORS_ID = "emulators"
     private const val EMULATORS_SCRIPT = "/usr/local/bin/droiddeck-emulators"
 
     fun desktopEntry(context: Context): Entry {
+        if (RuntimeStore.active(context)?.distro == "arch") {
+            return Entry(
+                ARCH_DESKTOP_ID, context.getString(R.string.content_linux_desktop), 1,
+                ARCH_DESKTOP_TAG, "tar", ARCH_DESKTOP_URL, ARCH_DESKTOP_SHA256, ARCH_DESKTOP_SIZE,
+                "", "", "",
+            )
+        }
         val pack = DesktopPack.info(LinuxRuntime.rootDir(context))
         return Entry(
             DESKTOP_ID, context.getString(R.string.content_linux_desktop), 1, pack?.tag ?: BuildConfig.DESKTOP_KDE_TAG, "tar",
@@ -138,16 +152,23 @@ object DesktopCatalog {
 
     fun desktopFromPack(root: File): Boolean = DesktopPack.info(root) != null
 
-    fun desktopInstalled(root: File): Boolean =
-        !File(root, DesktopRemoval.PENDING).exists() &&
-        File(root, "usr/bin/kwin_wayland").isFile &&
+    fun desktopInstalled(root: File): Boolean {
+        if (File(root, DesktopRemoval.PENDING).exists()) return false
+        val kde = File(root, "usr/bin/kwin_wayland").isFile &&
             FileUtils.readString(File(root, ".droiddeck-pkg-$DESKTOP_ID"))?.trim() ==
                 (DesktopPack.info(root)?.tag ?: BuildConfig.DESKTOP_KDE_TAG)
+        if (kde) return true
+        // Official Arch desktop pack (LXQt on labwc).
+        return File(root, "usr/local/bin/droiddeck-desktop").isFile &&
+            FileUtils.readString(File(root, ".droiddeck-pkg-$ARCH_DESKTOP_ID"))?.trim() == ARCH_DESKTOP_TAG
+    }
 
     fun desktopPresent(context: Context): Boolean {
         val root = LinuxRuntime.rootDir(context)
-        return File(root, DesktopRemoval.PENDING).exists() || marker(context, DESKTOP_ID).exists() ||
-            journal(root, DESKTOP_ID).exists()
+        val arch = RuntimeStore.active(context)?.distro == "arch"
+        return File(root, DesktopRemoval.PENDING).exists() ||
+            marker(context, if (arch) ARCH_DESKTOP_ID else DESKTOP_ID).exists() ||
+            journal(root, if (arch) ARCH_DESKTOP_ID else DESKTOP_ID).exists()
     }
 
     fun desktopSize(context: Context): Long = DesktopRemoval.installedSize(context)

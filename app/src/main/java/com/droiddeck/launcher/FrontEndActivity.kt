@@ -3093,7 +3093,9 @@ class FrontEndActivity : ComponentActivity() {
     }
 
     private fun checkCatalog() {
-        val release = LinuxRuntimeInstaller.fetchRelease()
+        val distro = com.droiddeck.launcher.runtime.RuntimeStore.active(this)?.distro
+        val catalog = if (distro == "arch") LinuxRuntimeInstaller.CATALOG_ARCH else LinuxRuntimeInstaller.CATALOG_UBUNTU
+        val release = LinuxRuntimeInstaller.fetchRelease(catalog)
         Log.i(TAG, "catalog: " + (release?.version ?: "unreachable"))
         ui.post {
             if (release == null) return@post
