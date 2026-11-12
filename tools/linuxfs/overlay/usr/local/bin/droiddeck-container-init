@@ -197,6 +197,12 @@ fi
 printf 'ready\n' > "$READY" 2>/dev/null || die "cannot write $READY"
 chown "$DD_UID:$DD_GID" "$READY" 2>/dev/null || true
 
+# Supervisor container: keeps the container alive and starts/stops sessions on demand.
+if [ "$DD_MODE" = supervisor ]; then
+  log "supervisor mode: starting droiddeck-supervisor as PID 1"
+  exec /usr/local/bin/droiddeck-supervisor
+fi
+
 # Maintenance container: no game session, the app only needs a live container for
 # `droidspaces run` commands (installers, flatpak, appimage). Stay root so those run as root.
 if [ "$DD_MODE" = service ]; then

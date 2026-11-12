@@ -85,6 +85,7 @@ object SessionFiles {
             "usr/local/bin/droiddeck-desktop-bookmarks" to "usr/local/bin/droiddeck-desktop-bookmarks",
             "usr/local/bin/droiddeck-downloads" to "usr/local/bin/droiddeck-downloads",
             "usr/local/bin/droiddeck-root" to "usr/local/bin/droiddeck-root",
+            "usr/local/bin/droiddeck-supervisor" to "usr/local/bin/droiddeck-supervisor",
             "usr/local/bin/sudo" to "usr/local/bin/sudo",
             "usr/local/bin/droiddeck-password-check" to "usr/local/bin/droiddeck-password-check",
             "usr/local/bin/droiddeck-text" to "usr/local/bin/droiddeck-text",

@@ -1,0 +1,112 @@
+#!/bin/sh
+# DroidDeck container PID1 supervisor.
+# Keeps the container (and optional base services such as DSH) alive while sessions are
+# started/stopped on demand. A session is a child process; stopping it never stops this container.
+BASE=/dd/container
+FIFO="$BASE/supervisor.fifo"
+STATUS="$BASE/supervisor.status"
+LOG="$BASE/supervisor.log"
+SESSION_LOG="$BASE/session.log"
+ENV_FILE="$BASE/session.env"
+SETPRIV=$(command -v setpriv) || { echo "supervisor: setpriv missing" >>"$LOG"; exit 1; }
+session_pid=
+
+log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
+
+session_env() {
+  # Reuse the UID/GID/groups the app prepared for this container.
+  [ -f "$ENV_FILE" ] && . "$ENV_FILE"
+  DD_UID=${DD_UID:-10490}
+  DD_GID=${DD_GID:-10490}
+  DD_GROUPS=${DD_GROUPS:-$DD_UID}
+}
+
+child_alive() {
+  [ -n "$session_pid" ] && kill -0 "$session_pid" 2>/dev/null
+}
+
+start_session() {
+  mode=$1
+  shift
+  if child_alive; then
+    echo "busy $session_pid" >"$STATUS"
+    return 1
+  fi
+  session_env
+  home=/root
+  case "$mode" in desktop|lxqt) home=/home/droiddeck ;; esac
+  log "start session mode=$mode args=$*"
+  echo "starting $mode" >"$STATUS"
+  (
+    exec "$SETPRIV" --reuid="$DD_UID" --regid="$DD_GID" --groups="$DD_GROUPS" \
+      --inh-caps=-all --bounding-set=-all -- \
+      env HOME="$home" USER="$(id -un "$DD_UID" 2>/dev/null || echo droiddeck)" \
+      /usr/local/bin/droiddeck-session "$mode" "$@"
+  ) >>"$SESSION_LOG" 2>&1 &
+  session_pid=$!
+  echo "running $session_pid $mode" >"$STATUS"
+  log "session pid=$session_pid"
+  return 0
+}
+
+stop_session() {
+  if [ -z "$session_pid" ]; then
+    echo "idle" >"$STATUS"
+    return 0
+  fi
+  log "stopping session pid=$session_pid"
+  kill -TERM "$session_pid" 2>/dev/null || true
+  i=0
+  while kill -0 "$session_pid" 2>/dev/null && [ "$i" -lt 50 ]; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  kill -KILL "$session_pid" 2>/dev/null || true
+  wait "$session_pid" 2>/dev/null
+  session_pid=
+  echo "idle" >"$STATUS"
+}
+
+start_base_services() {
+  if [ -x /usr/local/bin/droiddeck-dsh ]; then
+    log "starting base DSH service"
+    /usr/local/bin/droiddeck-dsh >"$BASE/dsh.log" 2>&1 &
+  fi
+}
+
+session_env
+rm -f "$FIFO"
+mkfifo "$FIFO" || { log "cannot create FIFO"; exit 1; }
+echo "supervisor ready pid=$$" >"$STATUS"
+log "supervisor ready pid=$$"
+start_base_services
+
+while :; do
+  if IFS= read -r line <"$FIFO"; then
+    case "$line" in
+      "start "*)
+        set -- ${line#start }
+        start_session "$@"
+        ;;
+      stop)
+        stop_session
+        ;;
+      status)
+        if child_alive; then echo "running $session_pid" >"$STATUS"; else echo "idle" >"$STATUS"; fi
+        ;;
+      shutdown)
+        stop_session
+        log "shutdown requested"
+        exit 0
+        ;;
+      *) log "unknown command: $line" ;;
+    esac
+  fi
+  # Reap a finished session without blocking.
+  if [ -n "$session_pid" ] && ! kill -0 "$session_pid" 2>/dev/null; then
+    wait "$session_pid" 2>/dev/null
+    log "session exited pid=$session_pid"
+    session_pid=
+    echo "idle" >"$STATUS"
+  fi
+done
