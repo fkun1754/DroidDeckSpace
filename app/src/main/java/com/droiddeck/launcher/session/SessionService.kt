@@ -177,6 +177,7 @@ class SessionService : Service() {
         updateSuspendPolicy()
     }
     @Volatile private var sessionGen = 0
+    @Volatile private var teardownThread: Thread? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -487,6 +488,14 @@ class SessionService : Service() {
         val sessionRoot = LinuxRuntime.sessionRoot(this).apply { mkdirs() }
         val runtimeDir = File(filesDir, ".wayland-rt").apply { mkdirs() }
         killStragglers()
+        val pendingTeardown = teardownThread
+        if (pendingTeardown != null && pendingTeardown.isAlive && pendingTeardown != Thread.currentThread()) {
+            try {
+                pendingTeardown.join(15_000)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+        }
         val stillStarting = { gen == sessionGen && SessionState.running }
         val directAudioPack = AddonPack.DIRECTAUDIO.await(this, stillStarting)
         val systemVulkan = SystemVulkanDriver.usesDefault(SessionPrefs.linuxDriver(this))
@@ -1453,7 +1462,7 @@ class SessionService : Service() {
             // The supervisor stays alive; only its session child is stopped.
             runCatching { session.stop(this) }
                 .onFailure { Log.w(TAG, "could not stop the supervised session", it) }
-            if (!waitForContainerExit(session, CONTAINER_STOP_MS)) {
+            if (!waitForContainerExit(session, SUPERVISED_STOP_MS)) {
                 Log.w(TAG, "supervised session did not report exit before timeout")
             }
             return
@@ -2121,15 +2130,21 @@ class SessionService : Service() {
         val steamClientMayRun = SessionState.mode == MODE_STEAM || SessionState.mode == MODE_DESKTOP
         val finishAfterTeardown: () -> Unit = {
             if (session != null || auxiliary.isNotEmpty()) {
-                Thread({
-                    if (session != null && steamClientMayRun) askSteamToExit(session)
+                val thread = Thread({
+                    // The supervisor stops a session by killing its process group; waiting for the
+                    // Steam client to save can add 10+ seconds and overlap the next mode.
+                    if (session != null && steamClientMayRun && !session.isSupervised()) askSteamToExit(session)
                     com.droiddeck.launcher.stores.gog.GogComet.end(stoppedSession)
                     auxiliary.forEach { (pid, started) -> teardown(pid, started) }
-                    if (session != null) stopContainerSession(session)
+                    if (session != null && stoppedGen == sessionGen && !SessionState.running) {
+                        stopContainerSession(session)
+                    }
                     pruneSystemVulkanRuntime()
                     finishSessionStop(status, stoppedGen, collectEnded)
                     if (launcherEnded) importLauncherGames()
-                }, "session-teardown").start()
+                }, "session-teardown")
+                teardownThread = thread
+                thread.start()
             } else {
                 Thread({ pruneSystemVulkanRuntime() }, "system-vulkan-prune").start()
                 Thread({
@@ -2524,6 +2539,7 @@ class SessionService : Service() {
         private const val TAG = "SessionService"
         private const val CONTAINER_POLL_MS = 1_000L
         private const val CONTAINER_STOP_MS = 35_000L
+        private const val SUPERVISED_STOP_MS = 8_000L
         private const val FREEZE_TIMEOUT_MS = 8_000L
         private const val RESUME_TIMEOUT_MS = 5_000L
         private const val CTL_COMMAND = "droiddeck-container-ctl"
