@@ -48,8 +48,22 @@ public final class ContainerSession {
 
     /** show --json is authoritative: a container whose init exited is no longer listed. */
     public boolean isAlive(Context context) {
+        if (supervised) {
+            // Hot path: the supervisor updates its status file without any su/droidspaces call.
+            java.io.File statusFile = supervisorFile(context, "supervisor.status");
+            if (statusFile.isFile()) {
+                try {
+                    String status = new String(java.nio.file.Files.readAllBytes(statusFile.toPath()),
+                            java.nio.charset.StandardCharsets.UTF_8).trim();
+                    if (status.startsWith("running")) return true;
+                    if (status.startsWith("idle")) return false;
+                } catch (Exception ignored) {
+                    // fall through to the container state
+                }
+            }
+            return DroidspacesCli.RUNNING.equals(DroidspacesCli.state(name));
+        }
         if (!DroidspacesCli.RUNNING.equals(DroidspacesCli.state(name))) return false;
-        if (supervised) return !supervisorFile(context, "session.exit").exists();
         return DroidspacesCli.run(context, name, Arrays.asList("true"), 10_000).ok();
     }
 
