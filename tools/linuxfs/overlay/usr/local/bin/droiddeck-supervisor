@@ -133,7 +133,7 @@ while :; do
       *) log "unknown command: $line" ;;
     esac
   fi
-  sleep 0.3
+  sleep 0.5
   # Reap a finished session without blocking.
   if [ -n "$session_pid" ] && ! kill -0 "$session_pid" 2>/dev/null; then
     wait "$session_pid" 2>/dev/null

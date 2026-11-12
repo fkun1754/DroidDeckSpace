@@ -42,6 +42,28 @@ object SessionFiles {
             socketFile.parentFile?.mkdirs()
             socketFile.writeText(context.packageName + ".root")
         }.onFailure { Log.w(TAG, "could not write the root socket name", it) }
+        // KDE's Discover notifier periodically starts PackageKit through the root service; that
+        // causes noticeable hitches in the session. Hide it for the DroidDeck desktop.
+        runCatching {
+            val hidden = "org.kde.discover.notifier.desktop"
+            val system = File(root, "etc/xdg/autostart/$hidden")
+            if (system.isFile) {
+                var text = system.readText()
+                if (!text.contains("Hidden=")) system.writeText(text.trimEnd() + "\nHidden=true\n")
+            }
+            val user = File(root, "home/droiddeck/.config/autostart/$hidden")
+            user.parentFile?.mkdirs()
+            user.writeText("[Desktop Entry]\nType=Application\nName=Discover Notifier\nHidden=true\n")
+        }.onFailure { Log.w(TAG, "could not hide the Discover notifier", it) }
+        runCatching {
+            val baloo = File(root, "home/droiddeck/.config/baloofilerc")
+            baloo.parentFile?.mkdirs()
+            val text = if (baloo.isFile) baloo.readText() else ""
+            if (!text.contains("Indexing-Enabled=")) {
+                val section = if (text.contains("[Basic Settings]")) text else text + "\n[Basic Settings]\n"
+                baloo.writeText(section.trimEnd() + "\nIndexing-Enabled=false\n")
+            }
+        }.onFailure { Log.w(TAG, "could not disable Baloo indexing", it) }
         GameEnvironmentStore.publish(context)
         WinComponents.publish(context)
         val files = arrayOf(
