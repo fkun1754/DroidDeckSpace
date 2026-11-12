@@ -37,7 +37,23 @@ class RuntimeInstallService : Service() {
                 }
             }
             if (removal) LinuxRuntimeInstaller.attach(progress)
-            else LinuxRuntimeInstaller.install(applicationContext, release!!, progress)
+            else {
+                val target = intent.getStringExtra(EXTRA_TARGET)?.let { java.io.File(it) }
+                val ok = if (target == null) LinuxRuntimeInstaller.install(applicationContext, release!!, progress)
+                         else LinuxRuntimeInstaller.installTo(applicationContext, release!!, target, progress)
+                if (ok && target != null) {
+                    val container = intent.getStringExtra(EXTRA_CONTAINER)
+                    val label = intent.getStringExtra(EXTRA_LABEL)
+                    if (container != null && label != null) {
+                        val distro = intent.getStringExtra(EXTRA_DISTRO) ?: "ubuntu"
+                        com.droiddeck.launcher.runtime.RuntimeStore.add(
+                            applicationContext,
+                            com.droiddeck.launcher.runtime.RuntimeStore.Entry(container, label, target.path, false, distro = distro),
+                            activate = true,
+                        )
+                    }
+                }
+            }
             @Suppress("DEPRECATION")
             stopForeground(true)
             stopSelf(startId)
@@ -102,13 +118,32 @@ class RuntimeInstallService : Service() {
         private const val EXTRA_URL = "url"
         private const val EXTRA_SHA256 = "sha256"
         private const val EXTRA_SIZE = "size"
+        private const val EXTRA_TARGET = "target"
+        private const val EXTRA_CONTAINER = "container"
+        private const val EXTRA_LABEL = "label"
+        private const val EXTRA_DISTRO = "distro"
 
         fun start(context: Context, release: LinuxRuntimeInstaller.Release) {
+            start(context, release, null, null, null, null)
+        }
+
+        fun start(
+            context: Context,
+            release: LinuxRuntimeInstaller.Release,
+            targetRoot: java.io.File?,
+            container: String?,
+            label: String?,
+            distro: String?,
+        ) {
             val intent = Intent(context, RuntimeInstallService::class.java)
                 .putExtra(EXTRA_VERSION, release.version)
                 .putExtra(EXTRA_URL, release.url)
                 .putExtra(EXTRA_SHA256, release.sha256)
                 .putExtra(EXTRA_SIZE, release.size)
+            targetRoot?.let { intent.putExtra(EXTRA_TARGET, it.absolutePath) }
+            container?.let { intent.putExtra(EXTRA_CONTAINER, it) }
+            label?.let { intent.putExtra(EXTRA_LABEL, it) }
+            distro?.let { intent.putExtra(EXTRA_DISTRO, it) }
             if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
         }
 

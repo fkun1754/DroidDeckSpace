@@ -3744,4 +3744,6 @@
     <string name="runtime_mgr_distro">发行版</string>
     <string name="runtime_mgr_distro_arch">Arch Linux ARM</string>
     <string name="runtime_mgr_distro_ubuntu">Ubuntu 26.04</string>
+
+    <string name="runtime_mgr_background">正在后台安装，进度显示在通知中</string>
 </resources>

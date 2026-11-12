@@ -3932,4 +3932,6 @@
     <string name="runtime_mgr_distro">Distribution</string>
     <string name="runtime_mgr_distro_arch">Arch Linux ARM</string>
     <string name="runtime_mgr_distro_ubuntu">Ubuntu 26.04</string>
+
+    <string name="runtime_mgr_background">Installing in the background; progress is shown in the notification</string>
 </resources>

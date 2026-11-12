@@ -40,6 +40,7 @@ import com.droiddeck.launcher.runtime.RuntimePrefs
 import com.droiddeck.launcher.runtime.RuntimeStore
 import com.droiddeck.launcher.runtime.container.ContainerRuntime
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -105,17 +106,20 @@ internal fun RuntimeManagerSection(
             }
             working = true
             progress = ctx.getString(if (repair) R.string.runtime_mgr_repairing else R.string.runtime_mgr_working)
-            val ok = withContext(Dispatchers.IO) {
-                if (entry?.builtin == true || entry == null) {
-                    LinuxRuntimeInstaller.install(ctx, release, null)
-                } else {
-                    LinuxRuntimeInstaller.installTo(ctx, release, File(entry.rootfs), null)
-                }
+            com.droiddeck.launcher.runtime.RuntimeInstallService.start(
+                ctx, release,
+                if (entry == null || entry.builtin) null else File(entry.rootfs),
+                entry?.container, entry?.label, entry?.distro,
+            )
+            message = ctx.getString(R.string.runtime_mgr_background)
+            // The foreground service keeps running if this screen goes away; poll only to refresh UI.
+            while (com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.isBusy()) {
+                delay(500)
             }
             working = false
-            message = if (ok) ctx.getString(if (repair) R.string.runtime_mgr_repaired else R.string.runtime_mgr_updated)
-            else ctx.getString(R.string.runtime_mgr_failed, "install")
+            message = ctx.getString(if (repair) R.string.runtime_mgr_repaired else R.string.runtime_mgr_updated)
             refresh()
+            onChanged()
         }
     }
 
@@ -381,20 +385,17 @@ internal fun RuntimeManagerSection(
                             message = ctx.getString(R.string.runtime_mgr_failed, "release")
                         } else {
                             val root = File(ctx.filesDir, "runtimes/${System.currentTimeMillis()}")
-                            val ok = withContext(Dispatchers.IO) {
-                                LinuxRuntimeInstaller.installTo(ctx, release, root, object : LinuxRuntimeInstaller.ProgressListener {
-                                    override fun onProgress(stage: String?, percent: Int) { progress = stage ?: "" }
-                                })
-                            }
+                            com.droiddeck.launcher.runtime.RuntimeInstallService.start(
+                                ctx, release, root, label, label, distro,
+                            )
                             working = false
-                            if (ok) {
-                                RuntimeStore.add(ctx, RuntimeStore.Entry(label, label, root.path, imported = false, distro = distro), activate = true)
-                                message = ctx.getString(R.string.runtime_mgr_imported, label)
-                                refresh()
-                                onChanged()
-                            } else {
-                                message = ctx.getString(R.string.runtime_mgr_failed, "install")
+                            message = ctx.getString(R.string.runtime_mgr_background)
+                            while (com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.isBusy()) {
+                                delay(500)
                             }
+                            message = ctx.getString(R.string.runtime_mgr_imported, label)
+                            refresh()
+                            onChanged()
                         }
                     }
                 }) { Text(stringResource(R.string.runtime_mgr_start)) }
