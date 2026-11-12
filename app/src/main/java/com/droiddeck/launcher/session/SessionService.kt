@@ -691,6 +691,8 @@ class SessionService : Service() {
             .uid(android.os.Process.myUid())
             .gid(android.os.Process.myUid())
             .build()
+        // Start the supervisor container in the background while the rest of the session is staged.
+        ContainerRuntime.prewarmSupervisorSession(this, spec)
         if (gen == sessionGen && SessionState.running) {
             SessionTerminal.prepare(GuestCommand.terminalCommand(),
                 arrayOf("PATH=/system/bin:/system/xbin:/vendor/bin"), root, gen)

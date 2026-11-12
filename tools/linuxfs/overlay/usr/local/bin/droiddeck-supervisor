@@ -65,6 +65,18 @@ start_session() {
   return 0
 }
 
+cleanup_session_processes() {
+  # Daemonized children (Steam, KWin helpers) can survive the session process group. They belong
+  # to this session, so clear them before declaring idle.
+  for name in kwin_wayland kwin_wayland_wrapper gamescope plasmashell Xwayland steam steamwebhelper; do
+    pkill -TERM -x "$name" 2>/dev/null || true
+  done
+  sleep 0.5
+  for name in kwin_wayland kwin_wayland_wrapper gamescope plasmashell Xwayland steam steamwebhelper; do
+    pkill -KILL -x "$name" 2>/dev/null || true
+  done
+}
+
 stop_session() {
   if [ -z "$session_pid" ]; then
     echo "idle" >"$STATUS"
@@ -79,6 +91,7 @@ stop_session() {
   done
   kill -KILL -"$session_pid" 2>/dev/null || kill -KILL "$session_pid" 2>/dev/null || true
   wait "$session_pid" 2>/dev/null
+  cleanup_session_processes
   echo "0" >"$EXIT_FILE"
   rm -f "$PID_FILE"
   session_pid=
@@ -125,6 +138,7 @@ while :; do
   if [ -n "$session_pid" ] && ! kill -0 "$session_pid" 2>/dev/null; then
     wait "$session_pid" 2>/dev/null
     rc=$?
+    cleanup_session_processes
     echo "$rc" >"$EXIT_FILE"
     log "session exited pid=$session_pid rc=$rc"
     rm -f "$PID_FILE"

@@ -305,23 +305,50 @@ public final class ContainerRuntime {
         if (isSupervisorRunning(context)) writeSupervisorCommand(context, "stop");
     }
 
-    /**
-     * Starts a session inside the persistent supervisor container. The container itself is left
-     * running, so a finished session no longer takes the runtime (and any base service such as
-     * DSH) down with it.
-     */
-    public static ContainerSession startSupervisorSession(Context context, SessionSpec session) {
-        if (!isAvailable(context)) throw new IllegalStateException(unavailableMessage(context));
-        SessionSpec spec = session == null
-                ? SessionSpec.builder().mode(SessionSpec.MODE_DESKTOP).build() : session;
-        synchronized (START_LOCK) {
-            String name = ContainerPaths.containerName(context);
-            long appUpdated = supervisorInstallTime(context);
-            long supervisorUpdated = supervisorPrefs(context).getLong("app_updated", 0);
-            if (isSupervisorRunning(context) && supervisorUpdated != appUpdated) {
-                Log.i(TAG, "the supervisor container predates this app update; restarting it");
-                stopContainer(context, name);
+    private static void stopPreviousSupervisedSession(Context context) {
+        if (!isSupervisorRunning(context)) return;
+        String current = readSupervisorStatus(context);
+        if (!current.startsWith("running") && !current.startsWith("starting")) return;
+        Log.i(TAG, "stopping the previous supervised session before switching modes");
+        writeSupervisorCommand(context, "stop");
+        long idleDeadline = System.currentTimeMillis() + 12_000;
+        while (System.currentTimeMillis() < idleDeadline) {
+            if (readSupervisorStatus(context).startsWith("idle")) return;
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
             }
+        }
+    }
+
+    private static volatile Thread supervisorPrewarm;
+
+    /** Start the supervisor container in the background while the session is still being staged. */
+    public static void prewarmSupervisorSession(Context context, SessionSpec session) {
+        if (session == null || !isAvailable(context) || isSupervisorRunning(context)) return;
+        if (supervisorPrewarm != null && supervisorPrewarm.isAlive()) return;
+        supervisorPrewarm = new Thread(() -> {
+            try {
+                synchronized (START_LOCK) {
+                    ensureSupervisorContainer(context, session);
+                }
+            } catch (RuntimeException e) {
+                Log.w(TAG, "supervisor prewarm failed", e);
+            }
+        }, "supervisor-prewarm");
+        supervisorPrewarm.start();
+    }
+
+    private static void ensureSupervisorContainer(Context context, SessionSpec spec) {
+        String name = ContainerPaths.containerName(context);
+        long appUpdated = supervisorInstallTime(context);
+        long supervisorUpdated = supervisorPrefs(context).getLong("app_updated", 0);
+        if (isSupervisorRunning(context) && supervisorUpdated != appUpdated) {
+            Log.i(TAG, "the supervisor container predates this app update; restarting it");
+            stopContainer(context, name);
+        }
             if (!isSupervisorRunning(context)) {
                 if (DroidspacesCli.RUNNING.equals(DroidspacesCli.state(name))) {
                     Log.w(TAG, "stopping the legacy container '" + name + "' before starting the supervisor");
@@ -358,6 +385,29 @@ public final class ContainerRuntime {
                 awaitReady(context, name);
                 supervisorPrefs(context).edit().putLong("app_updated", appUpdated).apply();
             }
+    }
+
+    /**
+     * Starts a session inside the persistent supervisor container. The container itself is left
+     * running, so a finished session no longer takes the runtime (and any base service such as
+     * DSH) down with it.
+     */
+    public static ContainerSession startSupervisorSession(Context context, SessionSpec session) {
+        if (!isAvailable(context)) throw new IllegalStateException(unavailableMessage(context));
+        SessionSpec spec = session == null
+                ? SessionSpec.builder().mode(SessionSpec.MODE_DESKTOP).build() : session;
+        Thread prewarm = supervisorPrewarm;
+        if (prewarm != null && prewarm.isAlive()) {
+            try {
+                prewarm.join(15_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        synchronized (START_LOCK) {
+            String name = ContainerPaths.containerName(context);
+            stopPreviousSupervisedSession(context);
+            ensureSupervisorContainer(context, spec);
             // Wait until the supervisor has written its first status line.
             long readyDeadline = System.currentTimeMillis() + 10_000;
             while (System.currentTimeMillis() < readyDeadline && readSupervisorStatus(context).isEmpty()) {
