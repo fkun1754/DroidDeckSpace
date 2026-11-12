@@ -1045,6 +1045,10 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
                         runCatching { com.droiddeck.launcher.session.TelemetryOutput.applyAutomatic(this@SessionActivity, nextGame) }
                     }
                 }
+                LaunchedEffect(SessionState.mode, SessionState.running) {
+                    onScreenControls?.reload()
+                    updateOnScreenControls()
+                }
                 LaunchedEffect(drawerOpen, pcKeyboardOpen, achievementsOpen, gestureSettingsOpen, inputSettingsOpen, pipUi, SessionState.suspended, resumed, appTextFocus) {
                     updateOnScreenControls()
                     padBridge?.setInputEnabled(resumed && !drawerOpen && !pcKeyboardOpen && !achievementsOpen && !gestureSettingsOpen && !inputSettingsOpen && !pipUi && !appTextFocus && !SessionState.suspended)
@@ -2220,10 +2224,6 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
         }
         if (!SessionState.running) SessionEvents.record("compositor.started")
         outputReady = true
-        if (!SessionState.running && !passwordWizardChecked) {
-            passwordWizardChecked = true
-            maybeShowDesktopPasswordWizard()
-        }
         if (!SessionState.running) startGuestSession()
         applyFrameGen()
         applyGameAlignment()

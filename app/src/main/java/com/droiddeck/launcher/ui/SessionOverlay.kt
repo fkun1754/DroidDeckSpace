@@ -372,7 +372,6 @@ internal fun SessionDrawer(open: Boolean, requestedPage: SessionDrawerPage, cont
     var advancedEffectsExpanded by rememberSaveable { mutableStateOf(false) }
     var appToChooseDisplay by remember { mutableStateOf<HomeApp.LaunchableApp?>(null) }
     var confirmStop by remember { mutableStateOf(false) }
-    var showDesktopPasswordDialog by remember { mutableStateOf(false) }
     var sheetCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var stopCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val pageScroll = remember { SessionDrawerPage.entries.associateWith { ScrollState(0) } }
@@ -792,17 +791,6 @@ internal fun SessionDrawer(open: Boolean, requestedPage: SessionDrawerPage, cont
                                     }
                                 }
                             }
-                            SettingsGroup(stringResource(R.string.desktop_password_title)) {
-                                SettingsRow(
-                                    stringResource(R.string.desktop_password_title),
-                                    stringResource(R.string.desktop_password_settings_hint),
-                                ) {
-                                    DrawerOutlineButton(
-                                        stringResource(R.string.desktop_password_change),
-                                        modifier = focus.track(page, "desktop-password"),
-                                    ) { showDesktopPasswordDialog = true }
-                                }
-                            }
                             SettingsGroup(stringResource(R.string.drawer_session_behavior)) {
                                 if (a.micAvailable) ToggleRow(host, "microphone", stringResource(R.string.mode_mic),
                                     stringResource(R.string.drawer_mic_hint), a.micEnabled,
@@ -838,7 +826,6 @@ internal fun SessionDrawer(open: Boolean, requestedPage: SessionDrawerPage, cont
                                     }
                                 }
                             }
-                            if (showDesktopPasswordDialog) DesktopPasswordDialog(onDismiss = { showDesktopPasswordDialog = false })
                             if (a.pipSupported) SettingsGroup(stringResource(R.string.pip_title)) {
                                 ToggleRow(host, "pip-auto", stringResource(R.string.pip_auto), null,
                                     a.pipAutoEnter, onChange = a.onPipAutoEnter)
