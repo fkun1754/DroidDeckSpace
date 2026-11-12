@@ -20,6 +20,7 @@ class RuntimeInstallService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_PACKAGE) return holdPackage(startId)
+        if (intent?.action == ACTION_CONTAINER_REMOVE) return removeContainer(intent, startId)
         val removal = intent?.action == ACTION_REMOVE
         val release = intent?.let(::releaseFrom)
         startForeground(NOTIFICATION_ID, notification(getString(if (LinuxRuntimeInstaller.isMaintaining()) R.string.desktop_removing else if (removal) R.string.rtinst_removing else R.string.user_apps_starting), -1))
@@ -30,7 +31,9 @@ class RuntimeInstallService : Service() {
         Thread({
             val manager = getSystemService(NotificationManager::class.java)
             var shown = ""
+            RuntimeOperation.begin(getString(R.string.runtime_mgr_working))
             val progress = LinuxRuntimeInstaller.ProgressListener { stage, percent ->
+                RuntimeOperation.progress(stage, percent)
                 if ("$stage:$percent" != shown) {
                     shown = "$stage:$percent"
                     manager?.notify(NOTIFICATION_ID, notification(stage, percent))
@@ -54,6 +57,7 @@ class RuntimeInstallService : Service() {
                     }
                 }
             }
+            RuntimeOperation.end()
             @Suppress("DEPRECATION")
             stopForeground(true)
             stopSelf(startId)
@@ -78,6 +82,27 @@ class RuntimeInstallService : Service() {
             stopForeground(true)
             stopSelf(startId)
         }, "package-install").start()
+        return START_NOT_STICKY
+    }
+
+    private fun removeContainer(intent: Intent, startId: Int): Int {
+        val container = intent.getStringExtra(EXTRA_CONTAINER) ?: run { stopSelf(startId); return START_NOT_STICKY }
+        val rootfs = intent.getStringExtra(EXTRA_TARGET)
+        startForeground(NOTIFICATION_ID, notification(getString(R.string.runtime_mgr_removing), -1))
+        Thread({
+            RuntimeOperation.begin(getString(R.string.runtime_mgr_removing))
+            runCatching { com.droiddeck.launcher.runtime.container.ContainerRuntime.stopContainer(applicationContext, container) }
+            com.droiddeck.launcher.runtime.RuntimeStore.remove(applicationContext, container)
+            runCatching { com.droiddeck.launcher.runtime.container.ContainerRuntime.removeContainer(applicationContext, container) }
+            if (rootfs != null) runCatching {
+                com.droiddeck.launcher.runtime.container.SuShell.exec(
+                    "rm -rf " + com.droiddeck.launcher.runtime.container.SuShell.quote(rootfs), 180_000)
+            }
+            RuntimeOperation.end()
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+            stopSelf(startId)
+        }, "runtime-remove").start()
         return START_NOT_STICKY
     }
 
@@ -110,6 +135,7 @@ class RuntimeInstallService : Service() {
         private const val NOTIFICATION_ID = 2
         private const val ACTION_REMOVE = "com.droiddeck.launcher.REMOVE_RUNTIME"
         private const val ACTION_PACKAGE = "com.droiddeck.launcher.INSTALL_PACKAGE"
+        private const val ACTION_CONTAINER_REMOVE = "com.droiddeck.launcher.REMOVE_CONTAINER"
         private val packageHolds = java.util.concurrent.atomic.AtomicInteger()
         @Volatile private var packageTitle = ""
         @Volatile private var packageStage = ""
@@ -144,6 +170,14 @@ class RuntimeInstallService : Service() {
             container?.let { intent.putExtra(EXTRA_CONTAINER, it) }
             label?.let { intent.putExtra(EXTRA_LABEL, it) }
             distro?.let { intent.putExtra(EXTRA_DISTRO, it) }
+            if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
+        }
+
+        fun removeContainer(context: Context, container: String, rootfs: String?) {
+            val intent = Intent(context, RuntimeInstallService::class.java)
+                .setAction(ACTION_CONTAINER_REMOVE)
+                .putExtra(EXTRA_CONTAINER, container)
+            rootfs?.let { intent.putExtra(EXTRA_TARGET, it) }
             if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
         }
 

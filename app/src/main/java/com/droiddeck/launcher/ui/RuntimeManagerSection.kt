@@ -142,6 +142,12 @@ internal fun RuntimeManagerSection(
         title = { Text(stringResource(R.string.runtime_mgr_manage)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (com.droiddeck.launcher.runtime.RuntimeOperation.running) {
+                    val op = com.droiddeck.launcher.runtime.RuntimeOperation
+                    Text(op.stage, fontSize = 12.sp)
+                    if (op.percent >= 0) LinearProgressIndicator(progress = { op.percent / 100f }, modifier = Modifier.fillMaxWidth())
+                    else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
                 var keepRunning by remember { mutableStateOf(RuntimePrefs.keepRunning(ctx)) }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.runtime_mgr_keep_running), fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -311,10 +317,12 @@ internal fun RuntimeManagerSection(
                                 checking = true
                                 working = true
                                 progress = ctx.getString(R.string.runtime_mgr_checking)
+                                com.droiddeck.launcher.runtime.RuntimeOperation.begin(progress)
                                 scope.launch {
                                     val reason = withContext(Dispatchers.IO) { RuntimeDiscovery.compatibility(ctx, container) }
                                     checking = false
                                     working = false
+                                    com.droiddeck.launcher.runtime.RuntimeOperation.end()
                                     if (reason != null) {
                                         message = ctx.getString(R.string.runtime_mgr_incompatible, reason)
                                     } else {
@@ -425,12 +433,12 @@ internal fun RuntimeManagerSection(
                             sub = null
                             working = true
                             progress = ctx.getString(R.string.runtime_mgr_removing)
+                            com.droiddeck.launcher.runtime.RuntimeInstallService.removeContainer(ctx, entry.container, entry.rootfs)
+                            message = ctx.getString(R.string.runtime_mgr_background)
                             scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    runCatching { ContainerRuntime.stopContainer(ctx, entry.container) }
-                                    RuntimeStore.remove(ctx, entry.container)
-                                    ContainerRuntime.removeContainer(ctx, entry.container)
-                                    deleteRuntimeFiles(File(entry.rootfs))
+                                while (com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.isBusy() ||
+                                    com.droiddeck.launcher.runtime.RuntimeOperation.running) {
+                                    delay(500)
                                 }
                                 working = false
                                 refresh()
