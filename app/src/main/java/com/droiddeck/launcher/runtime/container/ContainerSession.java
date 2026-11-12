@@ -13,11 +13,25 @@ public final class ContainerSession {
     private final String name;
     private final String sessionId;
     private final long startedAt;
+    private final boolean supervised;
 
     ContainerSession(String name, String sessionId) {
+        this(name, sessionId, false);
+    }
+
+    ContainerSession(String name, String sessionId, boolean supervised) {
         this.name = name == null || name.isEmpty() ? ContainerPaths.CONTAINER_NAME : name;
         this.sessionId = sessionId == null ? "" : sessionId;
         this.startedAt = System.currentTimeMillis();
+        this.supervised = supervised;
+    }
+
+    public boolean isSupervised() {
+        return supervised;
+    }
+
+    private static java.io.File supervisorFile(Context context, String name) {
+        return new java.io.File(new java.io.File(context.getFilesDir(), "container"), name);
     }
 
     public String name() {
@@ -35,10 +49,15 @@ public final class ContainerSession {
     /** show --json is authoritative: a container whose init exited is no longer listed. */
     public boolean isAlive(Context context) {
         if (!DroidspacesCli.RUNNING.equals(DroidspacesCli.state(name))) return false;
+        if (supervised) return !supervisorFile(context, "session.exit").exists();
         return DroidspacesCli.run(context, name, Arrays.asList("true"), 10_000).ok();
     }
 
     public void stop(Context context) {
+        if (supervised) {
+            ContainerRuntime.stopSupervisorSession(context);
+            return;
+        }
         ExecResult result = DroidspacesCli.stop(name);
         if (waitStopped(ContainerRuntime.STOP_TIMEOUT_MS)) return;
         throw new IllegalStateException("container '" + name + "' is still running after "
@@ -50,8 +69,13 @@ public final class ContainerSession {
     public Integer waitForExit(Context context, long timeoutMs) {
         long deadline = timeoutMs > 0 ? System.currentTimeMillis() + timeoutMs : Long.MAX_VALUE;
         while (true) {
-            String state = DroidspacesCli.state(name);
-            if (!DroidspacesCli.RUNNING.equals(state)) return exitCode(context);
+            if (supervised) {
+                if (supervisorFile(context, "session.exit").isFile()) return exitCode(context);
+                if (!DroidspacesCli.RUNNING.equals(DroidspacesCli.state(name))) return exitCode(context);
+            } else {
+                String state = DroidspacesCli.state(name);
+                if (!DroidspacesCli.RUNNING.equals(state)) return exitCode(context);
+            }
             if (System.currentTimeMillis() >= deadline) return null;
             try {
                 Thread.sleep(POLL_MS);
@@ -67,6 +91,17 @@ public final class ContainerSession {
      * (exit: N)" to the container log, which survives the container, so parse that.
      */
     public Integer exitCode(Context context) {
+        if (supervised) {
+            java.io.File file = supervisorFile(context, "session.exit");
+            if (file.isFile()) {
+                try {
+                    return Integer.parseInt(new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8).trim());
+                } catch (Exception ignored) {
+                    return null;
+                }
+            }
+            return null;
+        }
         for (String line : tailLogLines(context, 400)) {
             Integer code = exitCodeOf(line);
             if (code != null) return code;
@@ -104,6 +139,14 @@ public final class ContainerSession {
     }
 
     public int pid(Context context) {
+        if (supervised) {
+            java.io.File file = supervisorFile(context, "session.pid");
+            try {
+                return file.isFile() ? Integer.parseInt(new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8).trim()) : -1;
+            } catch (Exception ignored) {
+                return -1;
+            }
+        }
         return DroidspacesCli.pid(name);
     }
 

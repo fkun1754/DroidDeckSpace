@@ -67,7 +67,9 @@ class App : Application() {
                     available,
                 )
                 if (available) {
-                    if (com.droiddeck.launcher.runtime.container.ContainerRuntime.isRunning(this)) {
+                    if (com.droiddeck.launcher.runtime.container.ContainerRuntime.isRunning(this) &&
+                        !com.droiddeck.launcher.runtime.container.ContainerRuntime.isSupervisorRunning(this)
+                    ) {
                         android.util.Log.i("App", "retiring a container left behind by a previous app process")
                         com.droiddeck.launcher.runtime.container.ContainerRuntime.stop(this)
                     }

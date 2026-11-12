@@ -8,6 +8,9 @@ STATUS="$BASE/supervisor.status"
 LOG="$BASE/supervisor.log"
 SESSION_LOG="$BASE/session.log"
 ENV_FILE="$BASE/session.env"
+ARGS_FILE="$BASE/session.args"
+PID_FILE="$BASE/session.pid"
+EXIT_FILE="$BASE/session.exit"
 SETPRIV=$(command -v setpriv) || { echo "supervisor: setpriv missing" >>"$LOG"; exit 1; }
 session_pid=
 
@@ -26,13 +29,19 @@ child_alive() {
 }
 
 start_session() {
-  mode=$1
-  shift
   if child_alive; then
     echo "busy $session_pid" >"$STATUS"
     return 1
   fi
-  session_env
+  rm -f "$EXIT_FILE" "$PID_FILE"
+  set -a
+  [ -f "$ENV_FILE" ] && . "$ENV_FILE"
+  set +a
+  mode=${DD_MODE:-desktop}
+  set -- "$mode"
+  if [ -f "$ARGS_FILE" ]; then
+    while IFS= read -r a; do set -- "$@" "$a"; done <"$ARGS_FILE"
+  fi
   home=/root
   case "$mode" in desktop|lxqt) home=/home/droiddeck ;; esac
   log "start session mode=$mode args=$*"
@@ -44,6 +53,7 @@ start_session() {
       /usr/local/bin/droiddeck-session "$mode" "$@"
   ) >>"$SESSION_LOG" 2>&1 &
   session_pid=$!
+  echo "$session_pid" >"$PID_FILE"
   echo "running $session_pid $mode" >"$STATUS"
   log "session pid=$session_pid"
   return 0
@@ -63,6 +73,7 @@ stop_session() {
   done
   kill -KILL "$session_pid" 2>/dev/null || true
   wait "$session_pid" 2>/dev/null
+  echo "0" >"$EXIT_FILE"
   session_pid=
   echo "idle" >"$STATUS"
 }
@@ -84,9 +95,8 @@ start_base_services
 while :; do
   if IFS= read -r line <"$FIFO"; then
     case "$line" in
-      "start "*)
-        set -- ${line#start }
-        start_session "$@"
+      start|"start "*)
+        start_session
         ;;
       stop)
         stop_session
@@ -105,7 +115,9 @@ while :; do
   # Reap a finished session without blocking.
   if [ -n "$session_pid" ] && ! kill -0 "$session_pid" 2>/dev/null; then
     wait "$session_pid" 2>/dev/null
-    log "session exited pid=$session_pid"
+    rc=$?
+    echo "$rc" >"$EXIT_FILE"
+    log "session exited pid=$session_pid rc=$rc"
     session_pid=
     echo "idle" >"$STATUS"
   fi

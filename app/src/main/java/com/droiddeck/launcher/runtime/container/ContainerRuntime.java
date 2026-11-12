@@ -251,6 +251,79 @@ public final class ContainerRuntime {
     }
 
     /** Keeps a container alive for one-shot commands while no session runs (DD_MODE=service). */
+    /** True when the named container is running the supervisor (not a legacy session container). */
+    public static boolean isSupervisorRunning(Context context) {
+        if (!DroidspacesCli.RUNNING.equals(DroidspacesCli.state(ContainerPaths.containerName(context)))) return false;
+        return supervisorFile(context, "supervisor.fifo").exists();
+    }
+
+    private static java.io.File supervisorFile(Context context, String name) {
+        return new java.io.File(new java.io.File(context.getFilesDir(), "container"), name);
+    }
+
+    private static void writeSupervisorCommand(Context context, String command) {
+        java.io.File fifo = supervisorFile(context, "supervisor.fifo");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(fifo)) {
+            out.write((command + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            out.flush();
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("cannot send '" + command + "' to the supervisor: " + e, e);
+        }
+    }
+
+    public static void stopSupervisorSession(Context context) {
+        if (isSupervisorRunning(context)) writeSupervisorCommand(context, "stop");
+    }
+
+    /**
+     * Starts a session inside the persistent supervisor container. The container itself is left
+     * running, so a finished session no longer takes the runtime (and any base service such as
+     * DSH) down with it.
+     */
+    public static ContainerSession startSupervisorSession(Context context, SessionSpec session) {
+        if (!isAvailable(context)) throw new IllegalStateException(unavailableMessage(context));
+        SessionSpec spec = session == null
+                ? SessionSpec.builder().mode(SessionSpec.MODE_DESKTOP).build() : session;
+        synchronized (START_LOCK) {
+            String name = ContainerPaths.containerName(context);
+            if (!isSupervisorRunning(context)) {
+                if (DroidspacesCli.RUNNING.equals(DroidspacesCli.state(name))) {
+                    Log.w(TAG, "stopping the legacy container '" + name + "' before starting the supervisor");
+                    stopContainer(context, name);
+                }
+                SessionSpec supervisorSpec = SessionSpec.builder()
+                        .mode("supervisor")
+                        .sessionId(spec.sessionId())
+                        .uid(spec.uid())
+                        .gid(spec.gid())
+                        .groups(spec.groups())
+                        .build();
+                prepare(context, supervisorSpec);
+                List<String> binds = ContainerEnv.binds(context, spec);
+                cleanStaleContainerConfig(context, name);
+                DroidspacesCli.ContainerSpec cliSpec = DroidspacesCli.ContainerSpec
+                        .builder(name, ContainerPaths.rootfs(context))
+                        .init(ContainerPaths.GUEST_INIT)
+                        .binds(binds)
+                        .build();
+                ExecResult result = DroidspacesCli.start(cliSpec);
+                if (!result.ok() && looksLikeNameConflict(result)) {
+                    stopContainer(context, name);
+                    result = DroidspacesCli.start(cliSpec);
+                }
+                if (!result.ok()) {
+                    throw new IllegalStateException("cannot start the supervisor container '" + name + "'\n"
+                            + result.describe() + "\n" + diagnostics(context, name));
+                }
+                awaitReady(context, name);
+            }
+            // The supervisor reads these just before launching the session child.
+            prepare(context, spec);
+            writeSupervisorCommand(context, "start");
+            return new ContainerSession(name, spec.sessionId(), true);
+        }
+    }
+
     public static ContainerSession startMaintenance(Context context) {
         return ensureRunning(context, maintenanceSpec());
     }

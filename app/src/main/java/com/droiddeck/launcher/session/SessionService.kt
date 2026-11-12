@@ -734,7 +734,7 @@ class SessionService : Service() {
         // TODO(container): componentBinds alone should be enough; LinuxRuntime.binds() still carries
         // the proot-era fake sysfs/GPU emulation mounts and is redundant with ContainerEnv's binds.
         val session = try {
-            ContainerRuntime.start(this, spec)
+            ContainerRuntime.startSupervisorSession(this, spec)
         } catch (e: Exception) {
             Log.e(TAG, "the container session could not be started", e)
             failSession(gen, "CONTAINER_START_FAILED", e.message ?: "The container session could not be started", -1)
@@ -1395,7 +1395,11 @@ class SessionService : Service() {
     // ContainerSession.isAlive(), whose probe runs a command inside the (possibly stopped) container.
     // `state()` returns null when the CLI call itself failed, so two misses in a row are needed
     // before a live session is declared gone.
-    private fun containerRunning(): Boolean = ContainerRuntime.state(this) == "RUNNING"
+    private fun containerRunning(): Boolean {
+        val supervised = containerSession
+        if (supervised != null && supervised.isSupervised()) return supervised.isAlive(this)
+        return ContainerRuntime.state(this) == "RUNNING"
+    }
 
     private fun waitForContainerExit(session: ContainerSession, timeoutMs: Long): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
@@ -1443,6 +1447,15 @@ class SessionService : Service() {
     }
 
     private fun stopContainerSession(session: ContainerSession) {
+        if (session.isSupervised()) {
+            // The supervisor stays alive; only its session child is stopped.
+            runCatching { session.stop(this) }
+                .onFailure { Log.w(TAG, "could not stop the supervised session", it) }
+            if (!waitForContainerExit(session, CONTAINER_STOP_MS)) {
+                Log.w(TAG, "supervised session did not report exit before timeout")
+            }
+            return
+        }
         var stopped = runCatching { session.stop(this) }
             .onFailure { Log.w(TAG, "could not stop the container", it) }
             .isSuccess
@@ -1648,6 +1661,10 @@ class SessionService : Service() {
         // residual container of the same name before starting the new one. A maintenance container
         // means an install is using it right now: leave it alone here (the session start still
         // replaces it, see notes/impl-session-wiring.md).
+        if (ContainerRuntime.isSupervisorRunning(this)) {
+            Log.i(TAG, "the supervisor container is running; keeping it alive")
+            return
+        }
         if (ContainerRuntime.isMaintenance(this)) {
             Log.i(TAG, "a maintenance container is running (an install is in progress); not stopping it here")
             return
