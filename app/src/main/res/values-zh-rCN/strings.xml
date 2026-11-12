@@ -3740,4 +3740,8 @@
 
     <string name="desktop_password_settings_hint">设置或修改桌面普通用户 droiddeck 的密码（用于 sudo）。</string>
     <string name="desktop_password_change">设置 / 修改</string>
+
+    <string name="runtime_mgr_distro">发行版</string>
+    <string name="runtime_mgr_distro_arch">Arch Linux ARM</string>
+    <string name="runtime_mgr_distro_ubuntu">Ubuntu 26.04</string>
 </resources>

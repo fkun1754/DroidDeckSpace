@@ -3928,4 +3928,8 @@
 
     <string name="desktop_password_settings_hint">Set or change the password of the normal desktop user droiddeck (sudo).</string>
     <string name="desktop_password_change">Set / change</string>
+
+    <string name="runtime_mgr_distro">Distribution</string>
+    <string name="runtime_mgr_distro_arch">Arch Linux ARM</string>
+    <string name="runtime_mgr_distro_ubuntu">Ubuntu 26.04</string>
 </resources>

@@ -53,7 +53,9 @@ object RuntimeDiscovery {
         if (!osRelease.isFile) return "缺少 /etc/os-release，不是完整 Linux rootfs"
         val os = runCatching { osRelease.readText() }.getOrDefault("")
         val id = Regex("(?m)^ID=(\\S+)").find(os)?.groupValues?.get(1)?.trim('"')
-        if (id !in setOf("ubuntu", "debian")) return "不支持的系统：${id ?: "未知"}（仅支持 Ubuntu/Debian）"
+        if (id !in setOf("ubuntu", "debian", "arch", "archarm")) {
+            return "不支持的系统：${id ?: "未知"}（支持 Ubuntu/Debian/Arch）"
+        }
         if (!File(root, "bin/bash").isFile && !File(root, "usr/bin/bash").isFile) return "缺少 bash"
         if (!File(root, "usr/bin/gamescope").isFile && !File(root, "usr/games/gamescope").isFile) {
             return "缺少 gamescope（不是 DroidDeck 兼容运行时）"

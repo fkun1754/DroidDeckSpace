@@ -28,6 +28,7 @@ object RuntimeStore {
         val rootfs: String,
         val imported: Boolean,
         val builtin: Boolean = false,
+        val distro: String = "ubuntu",
     )
 
     fun validName(name: String): Boolean = NAME.matches(name.trim())
@@ -171,7 +172,8 @@ object RuntimeStore {
                 val rootfs = o.optString("rootfs")
                 if (container.isBlank() || rootfs.isBlank()) return@mapNotNull null
                 // Unify the name: the runtime label is always the DroidSpaces container name.
-                Entry(container, container, rootfs, o.optBoolean("imported"), o.optBoolean("builtin"))
+                Entry(container, container, rootfs, o.optBoolean("imported"), o.optBoolean("builtin"),
+                    o.optString("distro", "ubuntu"))
             }
         }.getOrDefault(emptyList())
     }
@@ -184,7 +186,8 @@ object RuntimeStore {
                 .put("label", it.label)
                 .put("rootfs", it.rootfs)
                 .put("imported", it.imported)
-                .put("builtin", it.builtin))
+                .put("builtin", it.builtin)
+                .put("distro", it.distro))
         }
         prefs(context).edit().putString(KEY_ENTRIES, array.toString()).apply()
     }

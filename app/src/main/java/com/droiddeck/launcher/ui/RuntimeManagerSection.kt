@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -90,7 +92,9 @@ internal fun RuntimeManagerSection(
     fun installActive(repair: Boolean) {
         if (busy || sessionRunning || working) return
         scope.launch {
-            val release = withContext(Dispatchers.IO) { LinuxRuntimeInstaller.fetchRelease() }
+            val entry = com.droiddeck.launcher.runtime.RuntimeStore.active(ctx)
+            val catalog = if (entry?.distro == "arch") LinuxRuntimeInstaller.CATALOG_ARCH else LinuxRuntimeInstaller.CATALOG_UBUNTU
+            val release = withContext(Dispatchers.IO) { LinuxRuntimeInstaller.fetchRelease(catalog) }
             if (release == null) {
                 message = ctx.getString(R.string.runtime_mgr_failed, "release")
                 return@launch
@@ -101,7 +105,6 @@ internal fun RuntimeManagerSection(
             }
             working = true
             progress = ctx.getString(if (repair) R.string.runtime_mgr_repairing else R.string.runtime_mgr_working)
-            val entry = com.droiddeck.launcher.runtime.RuntimeStore.active(ctx)
             val ok = withContext(Dispatchers.IO) {
                 if (entry?.builtin == true || entry == null) {
                     LinuxRuntimeInstaller.install(ctx, release, null)
@@ -134,7 +137,7 @@ internal fun RuntimeManagerSection(
         onDismissRequest = { if (!working) closeManager() },
         title = { Text(stringResource(R.string.runtime_mgr_manage)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
                 var keepRunning by remember { mutableStateOf(RuntimePrefs.keepRunning(ctx)) }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.runtime_mgr_keep_running), fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -258,7 +261,7 @@ internal fun RuntimeManagerSection(
             onDismissRequest = { editTarget = null },
             title = { Text(stringResource(R.string.runtime_mgr_edit_title)) },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     OutlinedTextField(
                         value = renameText, onValueChange = { renameText = it }, singleLine = true,
                         label = { Text(stringResource(R.string.runtime_mgr_rename_hint)) },
@@ -331,6 +334,7 @@ internal fun RuntimeManagerSection(
     if (sub == "new") {
         var taken by remember(sub) { mutableStateOf<List<String>?>(null) }
         var name by remember(sub) { mutableStateOf("") }
+        var distro by remember(sub) { mutableStateOf("ubuntu") }
         LaunchedEffect(sub) {
             val names = withContext(Dispatchers.IO) { RuntimeDiscovery.list(ctx, true).map { it.name } }
             taken = names
@@ -342,7 +346,7 @@ internal fun RuntimeManagerSection(
             onDismissRequest = { sub = null },
             title = { Text(stringResource(R.string.runtime_mgr_new)) },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     OutlinedTextField(
                         value = name, onValueChange = { name = it }, singleLine = true,
                         label = { Text(stringResource(R.string.runtime_mgr_name_hint)) },
@@ -350,6 +354,12 @@ internal fun RuntimeManagerSection(
                         supportingText = { Text(if (!valid) stringResource(R.string.runtime_mgr_name_invalid) else if (exists) stringResource(R.string.runtime_mgr_name_taken) else stringResource(R.string.runtime_mgr_name_hint)) },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     )
+                    Text(stringResource(R.string.runtime_mgr_distro), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SecondaryButton(stringResource(R.string.runtime_mgr_distro_arch), compact = true, enabled = !working) { distro = "arch" }
+                        SecondaryButton(stringResource(R.string.runtime_mgr_distro_ubuntu), compact = true, enabled = !working) { distro = "ubuntu" }
+                    }
+                    Text(if (distro == "arch") "Arch Linux ARM" else "Ubuntu 26.04", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(stringResource(R.string.runtime_mgr_new_hint), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (working) {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
@@ -364,7 +374,8 @@ internal fun RuntimeManagerSection(
                     working = true
                     progress = ctx.getString(R.string.runtime_mgr_working)
                     scope.launch {
-                        val release = withContext(Dispatchers.IO) { LinuxRuntimeInstaller.fetchRelease() }
+                        val catalog = if (distro == "arch") LinuxRuntimeInstaller.CATALOG_ARCH else LinuxRuntimeInstaller.CATALOG_UBUNTU
+                        val release = withContext(Dispatchers.IO) { LinuxRuntimeInstaller.fetchRelease(catalog) }
                         if (release == null) {
                             working = false
                             message = ctx.getString(R.string.runtime_mgr_failed, "release")
@@ -377,7 +388,7 @@ internal fun RuntimeManagerSection(
                             }
                             working = false
                             if (ok) {
-                                RuntimeStore.add(ctx, RuntimeStore.Entry(label, label, root.path, imported = false), activate = true)
+                                RuntimeStore.add(ctx, RuntimeStore.Entry(label, label, root.path, imported = false, distro = distro), activate = true)
                                 message = ctx.getString(R.string.runtime_mgr_imported, label)
                                 refresh()
                                 onChanged()

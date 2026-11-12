@@ -34,8 +34,11 @@ import java.util.concurrent.CountDownLatch;
 public final class LinuxRuntimeInstaller {
     private static final String TAG = "LinuxRuntimeInstaller";
 
-    public static final String CATALOG_URL =
+    public static final String CATALOG_ARCH =
+            "https://raw.githubusercontent.com/Droid-Deck/DroidDeck-Components/main/linuxfs.json";
+    public static final String CATALOG_UBUNTU =
             "https://raw.githubusercontent.com/Droid-Deck/DroidDeck-Components/main/linuxfs-ubuntu.json";
+    public static final String CATALOG_URL = CATALOG_UBUNTU;
 
     private static final String VERSION_FILE = ".version";
 
@@ -114,7 +117,11 @@ public final class LinuxRuntimeInstaller {
     }
 
     public static Release fetchRelease() {
-        String body = Downloader.downloadString(catalogUrl());
+        return fetchRelease(catalogUrl());
+    }
+
+    public static Release fetchRelease(String catalogUrl) {
+        String body = Downloader.downloadString(catalogUrl);
         if (body == null || body.isEmpty()) return null;
         try {
             JSONObject json = new JSONObject(body);
