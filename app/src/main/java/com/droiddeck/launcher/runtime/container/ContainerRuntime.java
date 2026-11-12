@@ -317,6 +317,19 @@ public final class ContainerRuntime {
                 }
                 awaitReady(context, name);
             }
+            // The init reports ready just before exec'ing the supervisor; wait for its FIFO.
+            java.io.File fifo = supervisorFile(context, "supervisor.fifo");
+            for (int i = 0; i < 100 && !fifo.exists(); i++) {
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            if (!fifo.exists()) {
+                throw new IllegalStateException("the supervisor did not create " + fifo);
+            }
             // The supervisor reads these just before launching the session child.
             prepare(context, spec);
             writeSupervisorCommand(context, "start");
