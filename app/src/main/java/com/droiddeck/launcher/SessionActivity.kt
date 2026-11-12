@@ -2118,15 +2118,18 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback {
     private fun installDesktop(): String? {
         uiHandler.post { loading.percent = -1; loading.say(getString(DESKTOP_LINES.downloading), DESKTOP_LINES.topic, readable = true) }
         val entry = com.droiddeck.launcher.runtime.DesktopCatalog.desktopEntry(this)
-        val cancellation = com.droiddeck.launcher.core.Downloader.Cancellation { SessionState.stopRequested }
-        SessionState.installCancellation = cancellation
-        return try {
-            val problem = com.droiddeck.launcher.runtime.DesktopCatalog.install(this, entry, cancellation,
-                progressFor(DESKTOP_LINES, entry.size / 1_000_000))
-            problem?.let { getString(R.string.session_desktop_install_failed, it) }
-        } finally {
-            if (SessionState.installCancellation === cancellation) SessionState.installCancellation = null
+        // The foreground service owns the download/extract so a session exit does not cancel it.
+        com.droiddeck.launcher.runtime.RuntimeInstallService.installDesktop(this, entry)
+        val deadline = System.currentTimeMillis() + 30 * 60_000L
+        while (System.currentTimeMillis() < deadline) {
+            if (SessionState.stopRequested) return "cancelled"
+            val problem = com.droiddeck.launcher.runtime.RuntimeOperation.problem
+            if (problem != null) return getString(R.string.session_desktop_install_failed, problem)
+            if (!com.droiddeck.launcher.runtime.RuntimeOperation.running &&
+                com.droiddeck.launcher.runtime.DesktopCatalog.desktopInstalled(this)) return null
+            Thread.sleep(300)
         }
+        return getString(R.string.session_desktop_install_failed, "timeout")
     }
 
     private fun installProton(): String? {

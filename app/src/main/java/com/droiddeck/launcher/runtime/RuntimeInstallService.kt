@@ -21,6 +21,7 @@ class RuntimeInstallService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_PACKAGE) return holdPackage(startId)
         if (intent?.action == ACTION_CONTAINER_REMOVE) return removeContainer(intent, startId)
+        if (intent?.action == ACTION_DESKTOP) return installDesktop(intent, startId)
         val removal = intent?.action == ACTION_REMOVE
         val release = intent?.let(::releaseFrom)
         startForeground(NOTIFICATION_ID, notification(getString(if (LinuxRuntimeInstaller.isMaintaining()) R.string.desktop_removing else if (removal) R.string.rtinst_removing else R.string.user_apps_starting), -1))
@@ -85,6 +86,41 @@ class RuntimeInstallService : Service() {
         return START_NOT_STICKY
     }
 
+    private fun installDesktop(intent: Intent, startId: Int): Int {
+        val entry = desktopEntry(intent) ?: run { stopSelf(startId); return START_NOT_STICKY }
+        startForeground(NOTIFICATION_ID, notification(getString(R.string.deskpkg_installing, entry.name), -1))
+        Thread({
+            RuntimeOperation.begin(getString(R.string.deskpkg_installing, entry.name))
+            val manager = getSystemService(NotificationManager::class.java)
+            var shown = ""
+            val problem = runCatching {
+                com.droiddeck.launcher.runtime.DesktopCatalog.install(applicationContext, entry) { stage, percent ->
+                    RuntimeOperation.progress(stage, percent)
+                    if ("$stage:$percent" != shown) {
+                        shown = "$stage:$percent"
+                        manager?.notify(NOTIFICATION_ID, notification(stage, percent))
+                    }
+                }
+            }.getOrElse { it.toString() }
+            if (problem != null) RuntimeOperation.fail(problem) else RuntimeOperation.end()
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+            stopSelf(startId)
+        }, "desktop-install").start()
+        return START_NOT_STICKY
+    }
+
+    private fun desktopEntry(intent: Intent): com.droiddeck.launcher.runtime.DesktopCatalog.Entry? {
+        val id = intent.getStringExtra(EXTRA_LABEL) ?: return null
+        val url = intent.getStringExtra(EXTRA_URL) ?: return null
+        return com.droiddeck.launcher.runtime.DesktopCatalog.Entry(
+            id, intent.getStringExtra(EXTRA_CONTAINER) ?: id, 1,
+            intent.getStringExtra(EXTRA_VERSION) ?: "", intent.getStringExtra(EXTRA_DISTRO) ?: "tar",
+            url, intent.getStringExtra(EXTRA_SHA256) ?: "", intent.getLongExtra(EXTRA_SIZE, 0L),
+            "", "", "",
+        )
+    }
+
     private fun removeContainer(intent: Intent, startId: Int): Int {
         val container = intent.getStringExtra(EXTRA_CONTAINER) ?: run { stopSelf(startId); return START_NOT_STICKY }
         val rootfs = intent.getStringExtra(EXTRA_TARGET)
@@ -136,6 +172,7 @@ class RuntimeInstallService : Service() {
         private const val ACTION_REMOVE = "com.droiddeck.launcher.REMOVE_RUNTIME"
         private const val ACTION_PACKAGE = "com.droiddeck.launcher.INSTALL_PACKAGE"
         private const val ACTION_CONTAINER_REMOVE = "com.droiddeck.launcher.REMOVE_CONTAINER"
+        private const val ACTION_DESKTOP = "com.droiddeck.launcher.INSTALL_DESKTOP"
         private val packageHolds = java.util.concurrent.atomic.AtomicInteger()
         @Volatile private var packageTitle = ""
         @Volatile private var packageStage = ""
@@ -170,6 +207,19 @@ class RuntimeInstallService : Service() {
             container?.let { intent.putExtra(EXTRA_CONTAINER, it) }
             label?.let { intent.putExtra(EXTRA_LABEL, it) }
             distro?.let { intent.putExtra(EXTRA_DISTRO, it) }
+            if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
+        }
+
+        fun installDesktop(context: Context, entry: com.droiddeck.launcher.runtime.DesktopCatalog.Entry) {
+            val intent = Intent(context, RuntimeInstallService::class.java)
+                .setAction(ACTION_DESKTOP)
+                .putExtra(EXTRA_LABEL, entry.id)
+                .putExtra(EXTRA_CONTAINER, entry.name)
+                .putExtra(EXTRA_VERSION, entry.version)
+                .putExtra(EXTRA_SHA256, entry.sha256)
+                .putExtra(EXTRA_DISTRO, entry.kind)
+                .putExtra(EXTRA_SIZE, entry.size)
+                .putExtra(EXTRA_URL, entry.url)
             if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
         }
 

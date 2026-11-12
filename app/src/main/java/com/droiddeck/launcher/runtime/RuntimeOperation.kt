@@ -13,11 +13,19 @@ object RuntimeOperation {
         private set
     var percent by mutableIntStateOf(-1)
         private set
+    var problem by mutableStateOf<String?>(null)
+        private set
 
     fun begin(stage: String, percent: Int = -1) {
         this.stage = stage
         this.percent = percent
+        problem = null
         running = true
+    }
+
+    fun fail(message: String) {
+        problem = message
+        running = false
     }
 
     fun progress(stage: String, percent: Int) {
