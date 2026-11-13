@@ -452,7 +452,26 @@ public final class ContainerRuntime {
     }
 
     public static ContainerSession startMaintenance(Context context) {
-        return ensureRunning(context, maintenanceSpec());
+        // Maintenance and session commands share one supervisor container now; no DD_MODE=service
+        // container is created. The supervisor stays idle until a session start command arrives.
+        ensureStandbySupervisor(context);
+        return null;
+    }
+
+    /** Starts the supervisor container in idle mode when no session is running. */
+    public static void ensureStandbySupervisor(Context context) {
+        if (!isAvailable(context) || isSupervisorRunning(context)) return;
+        synchronized (START_LOCK) {
+            if (isSupervisorRunning(context)) return;
+            SessionSpec spec = SessionSpec.builder()
+                    .mode("supervisor")
+                    .sessionId("standby")
+                    .uid(android.os.Process.myUid())
+                    .gid(android.os.Process.myUid())
+                    .groups(new int[]{android.os.Process.myUid()})
+                    .build();
+            ensureSupervisorContainer(context, spec);
+        }
     }
 
     /**

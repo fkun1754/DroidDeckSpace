@@ -19,7 +19,7 @@ class RuntimeBootReceiver : BroadcastReceiver() {
                     if (ContainerRuntime.isAvailable(app)) {
                         if (LinuxRuntimeInstaller.installedVersion(app) != null) {
                             Log.i("RuntimeBoot", "starting the runtime after boot")
-                            ContainerRuntime.startMaintenance(app)
+                            ContainerRuntime.ensureStandbySupervisor(app)
                         } else {
                             Log.w("RuntimeBoot", "no installed runtime to start")
                         }
