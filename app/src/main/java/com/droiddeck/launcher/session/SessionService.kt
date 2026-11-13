@@ -706,7 +706,7 @@ class SessionService : Service() {
         // Start the guest now, in parallel with the remaining App-side components. Waiting for
         // every component before sending start was adding ~3 s to desktop hot starts.
         val session = try {
-            ContainerRuntime.startSupervisorSession(this, spec)
+            ContainerRuntime.startSupervisorSessionAsync(this, spec)
         } catch (e: Exception) {
             Log.e(TAG, "the container session could not be started", e)
             failSession(gen, "CONTAINER_START_FAILED", e.message ?: "The container session could not be started", -1)
@@ -1456,8 +1456,17 @@ class SessionService : Service() {
     private fun watchContainerSession(session: ContainerSession, gen: Int) {
         Thread({
             var misses = 0
+            var started = false
+            val startDeadline = System.currentTimeMillis() + 12_000
             while (gen == sessionGen && SessionState.running) {
-                if (containerRunning()) misses = 0 else if (++misses >= 2) break
+                if (containerRunning()) {
+                    started = true
+                    misses = 0
+                } else if (!started && System.currentTimeMillis() < startDeadline) {
+                    // start is asynchronous: give the supervisor time to launch the child
+                } else if (++misses >= 2) {
+                    break
+                }
                 try { Thread.sleep(CONTAINER_POLL_MS) } catch (e: InterruptedException) { return@Thread }
             }
             if (gen != sessionGen || !SessionState.running) return@Thread

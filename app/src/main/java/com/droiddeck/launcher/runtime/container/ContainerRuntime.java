@@ -495,6 +495,44 @@ public final class ContainerRuntime {
         }
     }
 
+    /**
+     * Preliminary asynchronous start: ensure the supervisor and write start, but do not wait for
+     * the status line. The session watcher/first-frame path observes success or failure.
+     */
+    public static ContainerSession startSupervisorSessionAsync(Context context, SessionSpec session) {
+        if (!isAvailable(context)) throw new IllegalStateException(unavailableMessage(context));
+        SessionSpec spec = session == null
+                ? SessionSpec.builder().mode(SessionSpec.MODE_DESKTOP).build() : session;
+        Thread prewarm = supervisorPrewarm;
+        if (prewarm != null && prewarm.isAlive()) {
+            try {
+                prewarm.join(15_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        synchronized (START_LOCK) {
+            String name = ContainerPaths.containerName(context);
+            stopPreviousSupervisedSession(context);
+            ensureSupervisorContainer(context, spec);
+            long readyDeadline = System.currentTimeMillis() + 10_000;
+            while (System.currentTimeMillis() < readyDeadline && readSupervisorStatus(context).isEmpty()) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            if (readSupervisorStatus(context).isEmpty()) {
+                throw new IllegalStateException("the supervisor did not become ready");
+            }
+            prepare(context, spec);
+            writeSupervisorCommand(context, "start");
+            return new ContainerSession(name, spec.sessionId(), true);
+        }
+    }
+
     public static ContainerSession startMaintenance(Context context) {
         // Maintenance and session commands share one supervisor container now; no DD_MODE=service
         // container is created. The supervisor stays idle until a session start command arrives.
