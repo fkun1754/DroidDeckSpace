@@ -115,6 +115,7 @@ class FrontEndActivity : ComponentActivity() {
     private var removalPending by mutableStateOf(false)
     private var available by mutableStateOf<LinuxRuntimeInstaller.Release?>(null)
     private var catalogFresh = false
+    @Volatile private var prestaging = false
     private var availableCatalog: String? = null
     private var lastActiveRuntime: String? = null
     private var componentsQueueBusy by mutableStateOf(false)
@@ -1891,6 +1892,20 @@ class FrontEndActivity : ComponentActivity() {
             refreshHomeAppState()
         }
         if (settingsMode == SessionService.MODE_STEAM) refreshFoundSteamLibraries()
+        // Pre-stage the session overlay while the UI is idle: hot starts then only validate the ledger.
+        if (!SessionState.running && !prestaging &&
+            com.droiddeck.launcher.runtime.LinuxRuntime.isInstalled(this) &&
+            com.droiddeck.launcher.runtime.container.ContainerRuntime.isAvailable(this)
+        ) {
+            prestaging = true
+            Thread({
+                try {
+                    com.droiddeck.launcher.session.SessionFiles.stage(this, com.droiddeck.launcher.runtime.LinuxRuntime.rootDir(this))
+                } finally {
+                    prestaging = false
+                }
+            }, "session-prestage").start()
+        }
         compatLaunchVisible = true
         com.droiddeck.launcher.ui.DualScreenPanel.yieldTo(taskId, false)
         com.droiddeck.launcher.ui.DualScreenPanel.ownerPaused(taskId, false)
