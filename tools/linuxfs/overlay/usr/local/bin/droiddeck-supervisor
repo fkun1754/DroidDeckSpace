@@ -5,6 +5,7 @@
 BASE=/dd/container
 CMD_FILE="$BASE/supervisor.cmd"
 STATUS="$BASE/supervisor.status"
+HEARTBEAT="$BASE/supervisor.heartbeat"
 LOG="$BASE/supervisor.log"
 SESSION_LOG="$BASE/session.log"
 ENV_FILE="$BASE/session.env"

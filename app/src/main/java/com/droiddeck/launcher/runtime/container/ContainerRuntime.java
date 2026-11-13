@@ -256,7 +256,11 @@ public final class ContainerRuntime {
         String name = ContainerPaths.containerName(context);
         if (!DroidspacesCli.RUNNING.equals(DroidspacesCli.state(name))) return false;
         String status = readSupervisorStatus(context);
-        return !status.isEmpty();
+        if (status.isEmpty()) return false;
+        // A maintenance container shares the name and leaves the last supervisor.status behind;
+        // require a fresh heartbeat so that stale status cannot make us skip restarting the supervisor.
+        java.io.File heartbeat = supervisorFile(context, "supervisor.heartbeat");
+        return heartbeat.isFile() && System.currentTimeMillis() - heartbeat.lastModified() < 5_000;
     }
 
     private static android.content.SharedPreferences supervisorPrefs(Context context) {
