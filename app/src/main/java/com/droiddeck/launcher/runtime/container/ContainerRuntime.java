@@ -463,14 +463,7 @@ public final class ContainerRuntime {
         if (!isAvailable(context) || isSupervisorRunning(context)) return;
         synchronized (START_LOCK) {
             if (isSupervisorRunning(context)) return;
-            SessionSpec spec = SessionSpec.builder()
-                    .mode("supervisor")
-                    .sessionId("standby")
-                    .uid(android.os.Process.myUid())
-                    .gid(android.os.Process.myUid())
-                    .groups(new int[]{android.os.Process.myUid()})
-                    .build();
-            ensureSupervisorContainer(context, spec);
+            ensureSupervisorContainer(context, standbySpec());
         }
     }
 
@@ -526,6 +519,16 @@ public final class ContainerRuntime {
         return SessionSpec.builder()
                 .mode(SessionSpec.MODE_SERVICE)
                 .sessionId("service")
+                .uid(Process.myUid())
+                .gid(Process.myUid())
+                .build();
+    }
+
+    /** Same one-shot spec/binds as the old maintenance container, but run by the supervisor. */
+    private static SessionSpec standbySpec() {
+        return SessionSpec.builder()
+                .mode("supervisor")
+                .sessionId("standby")
                 .uid(Process.myUid())
                 .gid(Process.myUid())
                 .build();
