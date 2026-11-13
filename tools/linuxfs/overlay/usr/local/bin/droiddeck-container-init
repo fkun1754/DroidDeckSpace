@@ -162,6 +162,11 @@ chmod 1777 /tmp 2>/dev/null || true
 # The session runs as the app uid and creates the Wayland socket, the dbus socket and the HUD
 # output there; /run itself stays root-owned. /run/droiddeck-hud/frames is a FIFO the app
 # creates on the host side and bind-mounts here, so it must not be created as a directory.
+# DroidSpaces can recreate the private /dev/shm with root ownership across container restarts;
+# Steam's POSIX semaphores need the session uid to create files there.
+chown "$DD_UID:$DD_GID" /dev/shm 2>/dev/null || true
+chmod 0755 /dev/shm 2>/dev/null || true
+
 for dir in /run/droiddeck /run/droiddeck-hud /run/dbus; do
   mkdir -p "$dir" 2>/dev/null || true
   if [ -d "$dir" ]; then
