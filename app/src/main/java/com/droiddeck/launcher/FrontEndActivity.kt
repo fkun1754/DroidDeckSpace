@@ -1894,13 +1894,15 @@ class FrontEndActivity : ComponentActivity() {
         if (settingsMode == SessionService.MODE_STEAM) refreshFoundSteamLibraries()
         // Pre-stage the session overlay while the UI is idle: hot starts then only validate the ledger.
         if (!SessionState.running && !prestaging &&
-            com.droiddeck.launcher.runtime.LinuxRuntime.isInstalled(this) &&
-            com.droiddeck.launcher.runtime.container.ContainerRuntime.isAvailable(this)
+            com.droiddeck.launcher.runtime.LinuxRuntime.isInstalled(this)
         ) {
             prestaging = true
             Thread({
                 try {
-                    com.droiddeck.launcher.session.SessionFiles.stage(this, com.droiddeck.launcher.runtime.LinuxRuntime.rootDir(this))
+                    // Never probe root on the UI thread; the first launch may wait for a grant.
+                    if (com.droiddeck.launcher.runtime.container.ContainerRuntime.isAvailable(this)) {
+                        com.droiddeck.launcher.session.SessionFiles.stage(this, com.droiddeck.launcher.runtime.LinuxRuntime.rootDir(this))
+                    }
                 } finally {
                     prestaging = false
                 }

@@ -45,7 +45,8 @@ class App : Application() {
             runCatching { com.droiddeck.launcher.runtime.RuntimeSeedCache.clean(this) }
         }, "runtime-cache-cleanup").start()
         CrashHandler.install(this)
-        Thread({
+        val warmup = Runnable {
+            Thread({
             runCatching {
                 // Detection runs once during the first configuration. Later launches use the
                 // persisted result; the root bridge is warmed in the background so a session start
@@ -82,7 +83,9 @@ class App : Application() {
                     }
                 }
             }.onFailure { android.util.Log.w("App", "container warm-up failed", it) }
-        }, "container-warmup").start()
+            }, "container-warmup").start()
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(warmup, 2_000)
         com.droiddeck.launcher.core.SteamIntegration.syncShortcutsListing(this)
         com.droiddeck.launcher.session.QuestExperimental.initialize(this)
         com.droiddeck.launcher.session.SessionPrefs.applyNtsyncDefault(this)
