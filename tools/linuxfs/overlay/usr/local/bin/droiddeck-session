@@ -503,7 +503,7 @@ if [ -z "${BL_INSIDE:-}" ]; then
     step "starting the desktop"
     start_agent --no-focus
     # labwc's default Vulkan renderer needs DRM leases Android does not provide; use GL via Zink.
-    export BL_WLR_RENDERER=${BL_WLR_RENDERER:-gles2}
+    export BL_WLR_RENDERER=${BL_WLR_RENDERER:-pixman}
     desktop_bin=/usr/local/bin/droiddeck-desktop
     [ -x "$desktop_bin" ] || desktop_bin=/usr/local/bin/steamdeck-desktop
     [ -x "$desktop_bin" ] || { echo "== the desktop package is not installed"; exit 66; }
