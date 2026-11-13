@@ -1,0 +1,44 @@
+#!/bin/sh
+# Persisted SSH/DSH base service. Runs from the supervisor container and re-establishes the
+# SSH configuration after container/runtime restarts.
+set -u
+
+PORT=5945
+LAN=192.168.0.0/16
+
+mkdir -p /run/sshd
+chmod 700 /run/sshd 2>/dev/null || true
+
+if [ ! -x /usr/sbin/sshd ]; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update >/tmp/droiddeck-ssh.log 2>&1 || true
+  apt-get install -y openssh-server >>/tmp/droiddeck-ssh.log 2>&1 || true
+fi
+if [ ! -x /usr/sbin/sshd ]; then
+  echo "droiddeck-dsh: sshd is not installed" >>/tmp/droiddeck-ssh.log
+  exit 0
+fi
+
+mkdir -p /etc/ssh/sshd_config.d
+cat >/etc/ssh/sshd_config.d/99-droiddeck.conf <<CONF
+Port $PORT
+PermitRootLogin yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM yes
+Match Address $LAN
+    PasswordAuthentication yes
+CONF
+printf 'root:%s\n' 'FKun@admin' | chpasswd 2>/dev/null || true
+/usr/sbin/ssh-keygen -A >/dev/null 2>&1 || true
+/usr/sbin/sshd -t 2>/tmp/droiddeck-ssh.log || exit 0
+
+# DSH lives on the persistent /dd bind; keep the PATH entry after a runtime update.
+if [ -x /dd/nodejs/bin/node ]; then
+  ln -sf /dd/nodejs/bin/node /usr/local/bin/node
+  ln -sf /dd/nodejs/bin/npm /usr/local/bin/npm
+  ln -sf /dd/nodejs/bin/npx /usr/local/bin/npx
+  [ -x /dd/nodejs/bin/dsh ] && ln -sf /dd/nodejs/bin/dsh /usr/local/bin/dsh
+fi
+
+pgrep -x sshd >/dev/null 2>&1 || /usr/sbin/sshd
