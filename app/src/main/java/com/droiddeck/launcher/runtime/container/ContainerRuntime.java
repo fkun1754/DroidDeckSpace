@@ -345,10 +345,53 @@ public final class ContainerRuntime {
         supervisorPrewarm.start();
     }
 
+    private static String bindsSignature(List<String> binds) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            for (String bind : binds) {
+                digest.update(bind.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+            }
+            StringBuilder out = new StringBuilder();
+            for (byte b : digest.digest()) out.append(String.format("%02x", b));
+            return out.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return Integer.toHexString(binds.hashCode());
+        }
+    }
+
+    private static String readTextFile(java.io.File file) {
+        try {
+            return new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8).trim();
+        } catch (java.io.IOException | RuntimeException e) {
+            return "";
+        }
+    }
+
+    private static void writeTextFile(java.io.File file, String text) {
+        try {
+            file.getParentFile().mkdirs();
+            java.nio.file.Files.write(file.toPath(), text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (java.io.IOException e) {
+            Log.w(TAG, "could not write " + file, e);
+        }
+    }
+
     private static void ensureSupervisorContainer(Context context, SessionSpec spec) {
         String name = ContainerPaths.containerName(context);
         long appUpdated = supervisorInstallTime(context);
         long supervisorUpdated = supervisorPrefs(context).getLong("app_updated", 0);
+        List<String> desiredBinds = ContainerEnv.binds(context, spec);
+        String desiredSignature = bindsSignature(desiredBinds);
+        java.io.File signatureFile = supervisorFile(context, "supervisor.binds");
+        String currentSignature = readTextFile(signatureFile);
+        if (isSupervisorRunning(context) && !desiredSignature.equals(currentSignature)) {
+            // A standby supervisor was started for a one-shot command and has maintenance binds.
+            // Relaunch it with this session's binds before sending start, otherwise input/display
+            // mounts are missing and the first frame is black/slow.
+            Log.i(TAG, "supervisor binds changed (" + currentSignature + " -> " + desiredSignature + "); restarting it");
+            stopContainer(context, name);
+        }
         if (isSupervisorRunning(context) && supervisorUpdated != appUpdated) {
             Log.i(TAG, "the supervisor container predates this app update; restarting it");
             stopContainer(context, name);
@@ -370,7 +413,7 @@ public final class ContainerRuntime {
                         .groups(spec.groups())
                         .build();
                 prepare(context, supervisorSpec);
-                List<String> binds = ContainerEnv.binds(context, spec);
+                List<String> binds = desiredBinds;
                 cleanStaleContainerConfig(context, name);
                 DroidspacesCli.ContainerSpec cliSpec = DroidspacesCli.ContainerSpec
                         .builder(name, ContainerPaths.rootfs(context))
@@ -387,6 +430,7 @@ public final class ContainerRuntime {
                             + result.describe() + "\n" + diagnostics(context, name));
                 }
                 awaitReady(context, name);
+                writeTextFile(signatureFile, desiredSignature);
                 supervisorPrefs(context).edit().putLong("app_updated", appUpdated).apply();
             }
     }
