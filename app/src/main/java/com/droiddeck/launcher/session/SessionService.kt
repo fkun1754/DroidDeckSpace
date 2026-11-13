@@ -1106,7 +1106,9 @@ class SessionService : Service() {
         runtimeDir: File,
     ): ArrayList<String> {
         val binds = ArrayList<String>()
-        if (controllersOn) binds.addAll(deckBinds)
+        // deckBinds carry the fake Steam Deck USB/hidraw/sysfs tree; the built-in pad must be
+        // present even when no physical controller was connected at start.
+        if (controllersOn || SessionState.deckPad) binds.addAll(deckBinds)
         if (controllersOn) inputSysfs?.let {
             it.attach(this)
             components.add(it)

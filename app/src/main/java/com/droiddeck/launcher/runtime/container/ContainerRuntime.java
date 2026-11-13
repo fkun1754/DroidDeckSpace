@@ -409,7 +409,13 @@ public final class ContainerRuntime {
         long appUpdated = supervisorInstallTime(context);
         long supervisorUpdated = supervisorPrefs(context).getLong("app_updated", 0);
         List<String> desiredBinds = ContainerEnv.binds(context, spec);
-        String desiredSignature = bindsSignature(desiredBinds);
+        // Fake /sys devices (Steam Deck pad, sensors) are applied by the container init at boot,
+        // not by --bind. They must be part of the signature or a supervisor warmed for maintenance
+        // will be reused without the session's deck-pad sysfs tree.
+        List<String> desiredSysfs = ContainerEnv.sysfsBinds(context, spec);
+        java.util.List<String> signatureInput = new java.util.ArrayList<>(desiredBinds);
+        signatureInput.addAll(desiredSysfs);
+        String desiredSignature = bindsSignature(signatureInput);
         java.io.File signatureFile = supervisorFile(context, "supervisor.binds");
         String currentSignature = readTextFile(signatureFile);
         if (isSupervisorRunning(context) && !desiredSignature.equals(currentSignature)) {
@@ -438,6 +444,9 @@ public final class ContainerRuntime {
                         .uid(spec.uid())
                         .gid(spec.gid())
                         .groups(spec.groups())
+                        // The init applies the fake /sys manifest at container start; keep the
+                        // session's extra binds (Steam Deck pad, sensors) in that first manifest.
+                        .extraBinds(spec.extraBinds())
                         .build();
                 prepare(context, supervisorSpec);
                 List<String> binds = desiredBinds;

@@ -182,6 +182,22 @@ if [ -x "$DROIDDECK_EXTRA" ]; then
   "$DROIDDECK_EXTRA" >>/tmp/droiddeck-container-extra.log 2>&1 &
 fi
 prepare_fake_sysfs
+# The fake Steam Deck/controller tree describes hidraw devices in /sys, but the runtime's /dev is
+# private and has no matching nodes. Create them so Steam's udev/hidraw discovery can open the pad.
+prepare_fake_devices() {
+  for _n in 16 17 18 19 20 21; do
+    _dev=/dev/hidraw$_n
+    [ -e "$_dev" ] || mknod "$_dev" c 240 "$_n" 2>/dev/null || log "cannot create $_dev"
+    chmod 0666 "$_dev" 2>/dev/null || true
+    chown "$DD_UID:$DD_GID" "$_dev" 2>/dev/null || true
+  done
+  if [ ! -e /dev/uinput ]; then
+    mknod /dev/uinput c 10 223 2>/dev/null || true
+    chmod 0666 /dev/uinput 2>/dev/null || true
+    chown "$DD_UID:$DD_GID" /dev/uinput 2>/dev/null || true
+  fi
+}
+prepare_fake_devices
 
 set --
 if [ -f "$ARGS_FILE" ]; then
