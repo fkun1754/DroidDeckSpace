@@ -33,7 +33,10 @@ object SessionFiles {
     )
 
     fun stage(context: Context, root: File, startsSession: Boolean = false) {
-        if (DesktopCatalog.desktopInstalled(root) && !DesktopCatalog.desktopFromPack(root)) try { DesktopCatalog.cleanLegacy(context) }
+        // The official Arch desktop pack is also not a DesktopPack (KDE) install; cleanLegacy would
+        // treat it as an old LXQt desktop and remove its marker/files.
+        val archDesktop = com.droiddeck.launcher.runtime.RuntimeStore.active(context)?.distro == "arch"
+        if (!archDesktop && DesktopCatalog.desktopInstalled(root) && !DesktopCatalog.desktopFromPack(root)) try { DesktopCatalog.cleanLegacy(context) }
         catch (e: Exception) { Log.w(TAG, "LXQt cleanup will retry next session", e) }
         runCatching { com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.ensureL2sHardlinks(root) }
             .onFailure { Log.w(TAG, "l2s repair will retry next session", it) }
@@ -231,7 +234,10 @@ object SessionFiles {
             val dir = asset.substringBeforeLast('/')
             runCatching { context.assets.list("linuxfs/$dir")?.contains(asset.substringAfterLast('/')) == true }.getOrDefault(false)
         }
-        val all = (if (DesktopCatalog.desktopInstalled(root)) files + DESKTOP_FILES else files) + optional
+        // Arch's official desktop pack carries its own launcher; the Ubuntu replay's KDE launcher
+        // would overwrite it and exit immediately with kwin/plasma missing.
+        val arch = com.droiddeck.launcher.runtime.RuntimeStore.active(context)?.distro == "arch"
+        val all = (if (DesktopCatalog.desktopInstalled(root) && !arch) files + DESKTOP_FILES else files) + optional
         val ledger = StageLedger(File(root, STAGED_LEDGER), apkIdentity(context))
         for ((asset, relative) in all) {
             val target = File(root, relative)
