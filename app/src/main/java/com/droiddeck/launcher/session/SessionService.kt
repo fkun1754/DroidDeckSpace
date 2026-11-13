@@ -702,17 +702,33 @@ class SessionService : Service() {
             .build()
         // Start the supervisor container in the background while the rest of the session is staged.
         ContainerRuntime.prewarmSupervisorSession(this, spec)
+
+        if (SessionState.mode == MODE_STEAM || SessionState.mode == MODE_DESKTOP) OfflineMode.apply(this, root)
+        // Start the guest now, in parallel with the remaining App-side components. Waiting for
+        // every component before sending start was adding ~3 s to desktop hot starts.
+        val session = try {
+            ContainerRuntime.startSupervisorSession(this, spec)
+        } catch (e: Exception) {
+            Log.e(TAG, "the container session could not be started", e)
+            failSession(gen, "CONTAINER_START_FAILED", e.message ?: "The container session could not be started", -1)
+            stopSession(-1, gen)
+            return
+        }
+
+        if (SessionState.mode == MODE_DESKTOP) {
+            // Translation packs are optional and may need a download; never hold the desktop start
+            // for them. They are cached for the next session.
+            Thread({
+                runCatching { com.droiddeck.launcher.runtime.DesktopLanguage.ensure(this, com.droiddeck.launcher.core.AppLanguage.effective(this)) }
+                    .onFailure { Log.w(TAG, "desktop language pack: $it") }
+            }, "desktop-language").start()
+        }
+
         if (gen == sessionGen && SessionState.running) {
             SessionTerminal.prepare(GuestCommand.terminalCommand(),
                 arrayOf("PATH=/system/bin:/system/xbin:/vendor/bin"), root, gen)
             BottomDesktop.prepare(desktopGuest, componentBinds, sessionRoot, emptyArray(), root, sessionDir, gen,
             ) { gen == sessionGen && SessionState.running }
-        }
-
-        if (SessionState.mode == MODE_STEAM || SessionState.mode == MODE_DESKTOP) OfflineMode.apply(this, root)
-        if (SessionState.mode == MODE_DESKTOP) {
-            runCatching { com.droiddeck.launcher.runtime.DesktopLanguage.ensure(this, com.droiddeck.launcher.core.AppLanguage.effective(this)) }
-                .onFailure { Log.w(TAG, "desktop language pack: $it") }
         }
 
         val networkLink = LinuxNetworkLinkComponent(this, root)
@@ -744,14 +760,6 @@ class SessionService : Service() {
         // that path inside the rootfs, so the container cannot start before the stage has run.
         // TODO(container): componentBinds alone should be enough; LinuxRuntime.binds() still carries
         // the proot-era fake sysfs/GPU emulation mounts and is redundant with ContainerEnv's binds.
-        val session = try {
-            ContainerRuntime.startSupervisorSession(this, spec)
-        } catch (e: Exception) {
-            Log.e(TAG, "the container session could not be started", e)
-            failSession(gen, "CONTAINER_START_FAILED", e.message ?: "The container session could not be started", -1)
-            stopSession(-1, gen)
-            return
-        }
         var pid = -1
         for (attempt in 0 until 3) {
             pid = runCatching { session.pid(this) }.getOrDefault(-1)
