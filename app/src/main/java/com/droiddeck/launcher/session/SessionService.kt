@@ -1457,13 +1457,20 @@ class SessionService : Service() {
         Thread({
             var misses = 0
             var started = false
-            val startDeadline = System.currentTimeMillis() + 12_000
+            val watcherStart = System.currentTimeMillis()
+            val startDeadline = watcherStart + 8_000
             while (gen == sessionGen && SessionState.running) {
                 if (containerRunning()) {
                     started = true
                     misses = 0
                 } else if (!started && System.currentTimeMillis() < startDeadline) {
-                    // start is asynchronous: give the supervisor time to launch the child
+                    // Fast-fail when the supervisor has already settled back to idle and no child
+                    // appeared; otherwise keep the start grace window.
+                    val status = ContainerRuntime.readSupervisorStatus(this)
+                    if (status.startsWith("idle") && System.currentTimeMillis() - watcherStart > 2_500) {
+                        Log.w(TAG, "supervisor stayed idle while starting; failing the session")
+                        break
+                    }
                 } else if (++misses >= 2) {
                     break
                 }

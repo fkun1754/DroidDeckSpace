@@ -279,7 +279,10 @@ public final class ContainerRuntime {
         return new java.io.File(new java.io.File(context.getFilesDir(), "container"), name);
     }
 
+    private static final Object SUPERVISOR_CMD_LOCK = new Object();
+
     private static void writeSupervisorCommand(Context context, String command) {
+        synchronized (SUPERVISOR_CMD_LOCK) {
         java.io.File commandFile = supervisorFile(context, "supervisor.cmd");
         java.io.File temp = supervisorFile(context, "supervisor.cmd.tmp");
         try {
@@ -293,9 +296,10 @@ public final class ContainerRuntime {
         } catch (java.io.IOException e) {
             throw new IllegalStateException("cannot send '" + command + "' to the supervisor: " + e, e);
         }
+        }
     }
 
-    private static String readSupervisorStatus(Context context) {
+    public static String readSupervisorStatus(Context context) {
         java.io.File file = supervisorFile(context, "supervisor.status");
         try {
             return file.isFile() ? new String(java.nio.file.Files.readAllBytes(file.toPath()),
