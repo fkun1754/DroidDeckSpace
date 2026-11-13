@@ -696,6 +696,8 @@ public final class ContainerRuntime {
         try {
             if (!isAvailable(context)) return;
             SuShell.exec("true", 10_000);
+            // Prime the short-lived state cache while the front end is idle.
+            cachedState(context);
         } catch (RuntimeException e) {
             Log.w(TAG, "runtime warm-up failed: " + e);
         }
