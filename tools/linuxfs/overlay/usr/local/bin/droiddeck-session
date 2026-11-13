@@ -502,7 +502,11 @@ if [ -z "${BL_INSIDE:-}" ]; then
   if [ "$mode" = lxqt ]; then
     step "starting the desktop"
     start_agent --no-focus
-    [ -x /usr/local/bin/droiddeck-desktop ] || { echo "== the desktop package is not installed"; exit 66; }
+    # labwc's default Vulkan renderer needs DRM leases Android does not provide; use GL via Zink.
+    export BL_WLR_RENDERER=${BL_WLR_RENDERER:-gles2}
+    desktop_bin=/usr/local/bin/droiddeck-desktop
+    [ -x "$desktop_bin" ] || desktop_bin=/usr/local/bin/steamdeck-desktop
+    [ -x "$desktop_bin" ] || { echo "== the desktop package is not installed"; exit 66; }
     if command -v dbus-daemon >/dev/null 2>&1 && command -v droiddeck-netmanager >/dev/null 2>&1; then
       write_system_bus_config
       dbus-daemon --config-file=/usr/local/share/droiddeck/system-bus.conf --nofork --nopidfile &
@@ -522,7 +526,7 @@ if [ -z "${BL_INSIDE:-}" ]; then
       echo "== desktop cores: $cores (the desktop and every program started from it)"
       taskset -cp "$cores" $$ >/dev/null 2>&1 || echo "== desktop cores: not allowed right now, every core"
     fi
-    exec /usr/local/bin/droiddeck-desktop
+    exec "$desktop_bin"
   fi
   width=${BL_WIDTH:-1280}
   height=${BL_HEIGHT:-720}
