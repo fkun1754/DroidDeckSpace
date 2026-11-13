@@ -110,4 +110,8 @@ if ! flatpak remote-list --user --columns=name 2>/dev/null | grep -qx flathub; t
   echo "$out"
   [ $rc -eq 0 ] || fail "could not add the Flathub remote: $(echo "$out" | grep -v '^[[:space:]]*$' | tail -1)"
 fi
+# The app reads the readiness marker and installed-app metadata as its own uid; /root is 700 by
+# default, which would hide the per-user Flatpak installation.
+chmod o+x /root 2>/dev/null || true
+chmod -R a+rX /root/.local/share/flatpak 2>/dev/null || true
 echo "== DONE $(flatpak --version)"
