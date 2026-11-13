@@ -120,7 +120,8 @@ object FlatpakManager {
             var error: String? = null
             var step = context.getString(R.string.flatpakmgr_starting)
             val argv = listOfNotNull("/usr/bin/python3", HELPER, verb, id)
-            val status = runGuest(context, argv, fakeRoot = false) { line ->
+            // The installation is the root user one created by setup; helper writes must run as root.
+            val status = runGuest(context, argv, fakeRoot = true) { line ->
                 val o = runCatching { JSONObject(line) }.getOrNull()
                 if (o == null) { Log.i(TAG, "$verb: $line"); return@runGuest }
                 when (o.optString("e")) {
