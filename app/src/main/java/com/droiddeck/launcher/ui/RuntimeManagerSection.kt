@@ -396,11 +396,14 @@ internal fun RuntimeManagerSection(
                             com.droiddeck.launcher.runtime.RuntimeInstallService.start(
                                 ctx, release, root, label, label, distro,
                             )
-                            working = false
+                            working = true
                             message = ctx.getString(R.string.runtime_mgr_background)
-                            while (com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.isBusy()) {
+                            while (com.droiddeck.launcher.runtime.LinuxRuntimeInstaller.isBusy() ||
+                                com.droiddeck.launcher.runtime.RuntimeOperation.running) {
                                 delay(500)
                             }
+                            delay(300)
+                            working = false
                             message = ctx.getString(R.string.runtime_mgr_imported, label)
                             refresh()
                             onChanged()

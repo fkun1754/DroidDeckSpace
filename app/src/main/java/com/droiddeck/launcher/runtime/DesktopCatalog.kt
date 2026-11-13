@@ -158,9 +158,10 @@ object DesktopCatalog {
             FileUtils.readString(File(root, ".droiddeck-pkg-$DESKTOP_ID"))?.trim() ==
                 (DesktopPack.info(root)?.tag ?: BuildConfig.DESKTOP_KDE_TAG)
         if (kde) return true
-        // Official Arch desktop pack (LXQt on labwc).
-        return File(root, "usr/local/bin/droiddeck-desktop").isFile &&
-            FileUtils.readString(File(root, ".droiddeck-pkg-$ARCH_DESKTOP_ID"))?.trim() == ARCH_DESKTOP_TAG
+        // Official Arch desktop pack (LXQt on labwc). droiddeck-desktop itself is staged by the
+        // session, so treat the pack's own labwc/pcmanfm payload as the installed marker.
+        val archPack = FileUtils.readString(File(root, ".droiddeck-pkg-$ARCH_DESKTOP_ID"))?.trim() == ARCH_DESKTOP_TAG
+        return archPack && (File(root, "usr/bin/labwc").isFile || File(root, "usr/bin/pcmanfm").isFile)
     }
 
     fun desktopPresent(context: Context): Boolean {
