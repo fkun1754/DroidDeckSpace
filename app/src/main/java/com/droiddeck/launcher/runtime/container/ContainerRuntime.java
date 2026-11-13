@@ -252,9 +252,31 @@ public final class ContainerRuntime {
 
     /** Keeps a container alive for one-shot commands while no session runs (DD_MODE=service). */
     /** True when the named container is running the supervisor (not a legacy session container). */
+    private static volatile String cachedStateName = "";
+    private static volatile String cachedStateValue = "";
+    private static volatile long cachedStateAt = 0L;
+
+    /** Short-lived cached `droidspaces state`; root probes cost ~1.4 s per call. */
+    private static String cachedState(Context context) {
+        String name = ContainerPaths.containerName(context);
+        String value = cachedStateValue;
+        if (name.equals(cachedStateName) && System.currentTimeMillis() - cachedStateAt < 1_500) return value;
+        String state = DroidspacesCli.state(name);
+        if (state != null) {
+            cachedStateName = name;
+            cachedStateValue = state;
+            cachedStateAt = System.currentTimeMillis();
+        }
+        return state;
+    }
+
+    private static void invalidateStateCache() {
+        cachedStateAt = 0L;
+    }
+
     public static boolean isSupervisorRunning(Context context) {
         String name = ContainerPaths.containerName(context);
-        if (!DroidspacesCli.RUNNING.equals(DroidspacesCli.state(name))) return false;
+        if (!DroidspacesCli.RUNNING.equals(cachedState(context))) return false;
         String status = readSupervisorStatus(context);
         if (status.isEmpty()) return false;
         // A maintenance container shares the name and leaves the last supervisor.status behind;
@@ -383,6 +405,7 @@ public final class ContainerRuntime {
 
     private static void ensureSupervisorContainer(Context context, SessionSpec spec) {
         String name = ContainerPaths.containerName(context);
+        invalidateStateCache();
         long appUpdated = supervisorInstallTime(context);
         long supervisorUpdated = supervisorPrefs(context).getLong("app_updated", 0);
         List<String> desiredBinds = ContainerEnv.binds(context, spec);
@@ -434,6 +457,7 @@ public final class ContainerRuntime {
                             + result.describe() + "\n" + diagnostics(context, name));
                 }
                 awaitReady(context, name);
+                invalidateStateCache();
                 writeTextFile(signatureFile, desiredSignature);
                 supervisorPrefs(context).edit().putLong("app_updated", appUpdated).apply();
             }
@@ -768,6 +792,7 @@ public final class ContainerRuntime {
     }
 
     public static void stopContainer(Context context, String name) {
+        invalidateStateCache();
         if (DroidspacesCli.STOPPED.equals(DroidspacesCli.state(name))) return;
         ExecResult result = DroidspacesCli.stop(name);
         long deadline = System.currentTimeMillis() + STOP_TIMEOUT_MS;
