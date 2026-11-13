@@ -22,11 +22,12 @@ fi
 mkdir -p /etc/ssh/sshd_config.d
 cat >/etc/ssh/sshd_config.d/99-droiddeck.conf <<CONF
 Port $PORT
+AddressFamily inet
 PermitRootLogin yes
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 UsePAM yes
-Match Address $LAN
+Match Address 127.0.0.0/8,$LAN
     PasswordAuthentication yes
 CONF
 printf 'root:%s\n' 'FKun@admin' | chpasswd 2>/dev/null || true
