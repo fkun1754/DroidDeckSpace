@@ -703,7 +703,6 @@ class SessionService : Service() {
         // Start the supervisor container in the background while the rest of the session is staged.
         ContainerRuntime.prewarmSupervisorSession(this, spec)
 
-        if (SessionState.mode == MODE_STEAM || SessionState.mode == MODE_DESKTOP) OfflineMode.apply(this, root)
         // Start the guest now, in parallel with the remaining App-side components. Waiting for
         // every component before sending start was adding ~3 s to desktop hot starts.
         val session = try {
@@ -713,6 +712,12 @@ class SessionService : Service() {
             failSession(gen, "CONTAINER_START_FAILED", e.message ?: "The container session could not be started", -1)
             stopSession(-1, gen)
             return
+        }
+
+        if (SessionState.mode == MODE_STEAM || SessionState.mode == MODE_DESKTOP) {
+            Thread({
+                runCatching { OfflineMode.apply(this, root) }.onFailure { Log.w(TAG, "offline mode: $it") }
+            }, "offline-mode").start()
         }
 
         if (SessionState.mode == MODE_DESKTOP) {
@@ -818,10 +823,18 @@ class SessionService : Service() {
         SessionState.eventsFile = File(sessionDir, "events.jsonl")
         SessionEvents.record("session.logs_ready", mapOf("logDir" to sessionDir.path))
         if (EnhancedDiagnostics.isActive(this, sessionDir)) SessionEvents.record("diagnostics.enhanced", mapOf("schema" to 1))
-        DeviceReport.write(this, File(sessionDir, "device.txt"), SessionState.mode)
-        NetworkReport.write(this, File(sessionDir, "network.txt"))
-        SessionLogCapture.start(File(sessionDir, "app.log"))
-        MemoryLog.start()
+        // Diagnostic reports and log capture walk device/network state and can take seconds. They
+        // are not needed before the guest starts, so keep them off the startup path.
+        Thread({
+            runCatching { DeviceReport.write(this, File(sessionDir, "device.txt"), SessionState.mode) }
+                .onFailure { Log.w(TAG, "device report: $it") }
+            runCatching { NetworkReport.write(this, File(sessionDir, "network.txt")) }
+                .onFailure { Log.w(TAG, "network report: $it") }
+        }, "session-diagnostics").start()
+        Thread({
+            SessionLogCapture.start(File(sessionDir, "app.log"))
+            MemoryLog.start()
+        }, "session-log-capture").start()
         return sessionDir
     }
 
