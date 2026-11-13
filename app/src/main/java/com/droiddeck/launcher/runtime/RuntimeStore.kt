@@ -104,7 +104,11 @@ object RuntimeStore {
         prefs(context).edit().putString(KEY_ACTIVE, container).apply()
         // DroidSpaces' run_at_boot is per container; leaving the old one enabled would start both.
         if (previous != null && previous != container) {
-            Thread({ ContainerBootConfig.setRunAtBoot(context, previous, false) }, "boot-switch").start()
+            Thread({
+                ContainerBootConfig.setRunAtBoot(context, previous, false)
+                // Switching must not leave the old DroidSpaces container running in the background.
+                runCatching { com.droiddeck.launcher.runtime.container.ContainerRuntime.stopContainer(context, previous) }
+            }, "runtime-switch").start()
         }
     }
 

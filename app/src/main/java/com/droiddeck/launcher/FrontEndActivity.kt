@@ -115,6 +115,8 @@ class FrontEndActivity : ComponentActivity() {
     private var removalPending by mutableStateOf(false)
     private var available by mutableStateOf<LinuxRuntimeInstaller.Release?>(null)
     private var catalogFresh = false
+    private var availableCatalog: String? = null
+    private var lastActiveRuntime: String? = null
     private var componentsQueueBusy by mutableStateOf(false)
     private var busy by mutableStateOf(false)
     private var stage by mutableStateOf("")
@@ -2831,6 +2833,15 @@ class FrontEndActivity : ComponentActivity() {
     }
 
     private fun refresh() {
+        val activeRuntime = com.droiddeck.launcher.runtime.RuntimeStore.active(this)?.container
+        if (lastActiveRuntime != null && activeRuntime != lastActiveRuntime) {
+            // A catalog fetched for the old distribution must never auto-install over the new one.
+            available = null
+            catalogFresh = false
+            availableCatalog = null
+            ui.post { Thread({ checkCatalog() }, "catalog").start() }
+        }
+        lastActiveRuntime = activeRuntime
         val listX64 = SessionPrefs.activeSteamClientArch(this) == "x86_64"
         if (listX64 != steamGamesX64) {
             steamGamesX64 = listX64
@@ -3081,6 +3092,9 @@ class FrontEndActivity : ComponentActivity() {
 
     private fun autoUpdateRuntime() {
         val release = available?.takeIf { catalogFresh } ?: return
+        val distro = com.droiddeck.launcher.runtime.RuntimeStore.active(this)?.distro ?: "ubuntu"
+        val expectedCatalog = if (distro == "arch") LinuxRuntimeInstaller.CATALOG_ARCH else LinuxRuntimeInstaller.CATALOG_UBUNTU
+        if (availableCatalog != expectedCatalog) return
         if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) || runtimeChangesBlocked() || removalPending) return
         if (installed != null) com.droiddeck.launcher.runtime.RuntimeAutoUpdate.seed(this)
         if (release.version == installed) return
@@ -3100,6 +3114,7 @@ class FrontEndActivity : ComponentActivity() {
         ui.post {
             if (release == null) return@post
             available = release
+            availableCatalog = catalog
             catalogFresh = true
             autoUpdateRuntime()
         }
