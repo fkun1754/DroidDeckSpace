@@ -66,7 +66,8 @@ object GuestCommand {
         return try {
             ensureContainer(context)
             val uid = if (fakeRoot) null else Process.myUid()
-            val result = DroidspacesCli.execUnlimited(context, ContainerPaths.CONTAINER_NAME, uid,
+            val container = ContainerPaths.containerName(context)
+            val result = DroidspacesCli.execUnlimited(context, container, uid,
                 listOf("/bin/sh", "-c", script), { line ->
                     if (guestPid.get() <= 0 && line.startsWith("$PID_MARKER:")) {
                         line.removePrefix("$PID_MARKER:").trim().toIntOrNull()?.takeIf { it > 1 }?.let { guestPid.set(it) }
