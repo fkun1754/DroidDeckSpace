@@ -177,6 +177,10 @@ class SessionService : Service() {
         updateSuspendPolicy()
     }
     @Volatile private var sessionGen = 0
+    // Do not auto-suspend while Steam/gamescope is still bringing up its first frame. Hiding the
+    // surface before CEF has connected killed the session D-Bus and Steam aborted with
+    // "D-Bus connection was disconnected".
+    @Volatile private var startupGraceUntil = 0L
     @Volatile private var teardownThread: Thread? = null
 
     override fun onCreate() {
@@ -250,6 +254,7 @@ class SessionService : Service() {
             ACTION_ACTIVITY_VISIBLE -> {
                 if (!SessionState.pipActive) pipTask = false
                 activityVisible = true
+                startupGraceUntil = 0L
                 activityDisplayId = intent.getIntExtra(EXTRA_ACTIVITY_DISPLAY_ID, activityDisplayId)
                 sessionDisplayId = intent.getIntExtra(EXTRA_DISPLAY_ID, sessionDisplayId)
                 screenOn = readScreenOn()
@@ -356,6 +361,7 @@ class SessionService : Service() {
         suspendPolicy = SessionPrefs.suspendPolicy(this, SessionState.mode)
         steamDownloadsInBackground = SessionPrefs.steamDownloadsInBackground(this)
         activityVisible = true
+        startupGraceUntil = android.os.SystemClock.elapsedRealtime() + 90_000L
         xrActivityVisible = false
         signInHold = false
         sessionDisplayId = intent?.getIntExtra(EXTRA_DISPLAY_ID, Display.DEFAULT_DISPLAY) ?: Display.DEFAULT_DISPLAY
@@ -703,6 +709,11 @@ class SessionService : Service() {
         // Start the supervisor container in the background while the rest of the session is staged.
         ContainerRuntime.prewarmSupervisorSession(this, spec)
 
+        // Input sysfs/udev must exist before Steam/gamescope enumerate controllers, otherwise an
+        // external pad that is connected at launch is missed. Start only that component early.
+        val earlyInputParts = components.filter { it is InputSysfsComponent }
+        earlyInputParts.forEach { part -> runCatching { part.start() } }
+
         // Start the guest now, in parallel with the remaining App-side components. Waiting for
         // every component before sending start was adding ~3 s to desktop hot starts.
         val session = try {
@@ -750,7 +761,7 @@ class SessionService : Service() {
             return
         }
         try {
-            components.forEach { it.start() }
+            components.forEach { if (it !in earlyInputParts) it.start() }
         } catch (e: Exception) {
             Log.e(TAG, "Could not start the session components", e)
             failSession(gen, "COMPONENT_START_FAILED", e.message ?: "Session component could not be started", -1)
@@ -1869,7 +1880,7 @@ class SessionService : Service() {
 
     private fun updateSuspendPolicy() {
         if (!SessionState.running) return
-        val hidden = !hasVisibleSurface
+        val hidden = !hasVisibleSurface && android.os.SystemClock.elapsedRealtime() >= startupGraceUntil
         val downloadsBlockingSuspend = downloadsKeepAwake() && hidden && !suspendDownloadNow
         if (suspendPolicy == SessionPrefs.SUSPEND_MANUAL && hidden && !downloadsBlockingSuspend) {
             manualPauseRequested = true
