@@ -154,7 +154,12 @@ def main():
     available = bool(label) and (LIBRARY / "steamapps").is_dir()
     update_bookmark(bookmarks_file(home, config), label if available else None)
     data = Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share")
-    update_places(data / "user-places.xbel", steam_libraries(home, data))
+    libraries = steam_libraries(home, data)
+    # The desktop user is droiddeck while big-picture/root-owned data lives under /root. Keep both
+    # paths visible in Dolphin/GTK file managers instead of only the desktop home.
+    libraries.setdefault("file:///root", "Root (/root)")
+    libraries.setdefault("file:///", "Filesystem (/)")
+    update_places(data / "user-places.xbel", libraries)
 
 
 if __name__ == "__main__":
