@@ -14,7 +14,7 @@ usage: droiddeck-container-ctl <op> [args]
   ps                       one line per process: <pid> <ppid> <uid> <stat> <comm> <args...>
   stat                     boot=<btime> pids=<n> uptime=<s>
   signal <sig> <pid...>    sig: TERM, KILL, STOP, CONT, INT or HUP
-  freeze                   STOP every guest process except PID 1 and this command
+  freeze                   STOP every guest process except PID 1, this command and the SSH/DSH base services
   resume                   CONT every stopped guest process
   kill <pid...>            alias for signal KILL
 EOF
@@ -56,11 +56,32 @@ guest_pids() {
   done
 }
 
+# The dsh-app connection path (sshd and the `dsh web` tree) must keep running while the session
+# is suspended: it is the remote AI terminal, not part of the game session. The app suspends by
+# treating every process `ps` reports as session work and waiting for all of it to stop, so these
+# stay out of ps as well as out of freeze.
+base_service_pid() {
+  _bpid=$1
+  while [ -n "$_bpid" ] && [ "$_bpid" != 0 ] && [ "$_bpid" != 1 ]; do
+    _bstat=$(cat "/proc/$_bpid/stat" 2>/dev/null) || return 1
+    _bcomm=${_bstat#*(}
+    _bcomm=${_bcomm%%)*}
+    case $_bcomm in sshd*) return 0 ;; esac
+    _bargs=$(tr '\000' ' ' <"/proc/$_bpid/cmdline" 2>/dev/null) || return 1
+    case $_bargs in *'dsh web'*) return 0 ;; esac
+    _brest=${_bstat##*) }
+    set -- $_brest
+    _bpid=$2
+  done
+  return 1
+}
+
 cmd_ps() {
   for _d in /proc/[0-9]*; do
     _pid=${_d##*/}
     [ "$_pid" = 1 ] && continue
     [ "$_pid" = "$$" ] && continue
+    base_service_pid "$_pid" && continue
     print_process "$_pid"
   done
 }
@@ -113,6 +134,7 @@ cmd_signal() {
 
 cmd_freeze() {
   for _pid in $(guest_pids); do
+    base_service_pid "$_pid" && continue
     kill -STOP "$_pid" 2>/dev/null || true
   done
   return 0
