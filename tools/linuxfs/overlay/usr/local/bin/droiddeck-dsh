@@ -19,20 +19,29 @@ if [ ! -x /usr/sbin/sshd ]; then
   exit 0
 fi
 
+write_sshd_conf() {
+  {
+    printf 'Port %s\n' "$PORT"
+    printf 'AddressFamily inet\n'
+    printf 'PermitRootLogin yes\n'
+    printf 'PasswordAuthentication no\n'
+    printf 'KbdInteractiveAuthentication no\n'
+    printf 'UsePAM yes\n'
+    [ -n "${1:-}" ] && printf '%s\n' "$1"
+    printf 'Match Address 127.0.0.0/8,%s\n' "$LAN"
+    printf '    PasswordAuthentication yes\n'
+  } >/etc/ssh/sshd_config.d/99-droiddeck.conf
+}
 mkdir -p /etc/ssh/sshd_config.d
-cat >/etc/ssh/sshd_config.d/99-droiddeck.conf <<CONF
-Port $PORT
-AddressFamily inet
-PermitRootLogin yes
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-UsePAM yes
-Match Address 127.0.0.0/8,$LAN
-    PasswordAuthentication yes
-CONF
+# dsh-app reconnects over the phone's own loopback; OpenSSH >= 9.8 otherwise refuses it with
+# "Not allowed at this time" after a burst of failed attempts and never lets it recover.
+write_sshd_conf 'PerSourcePenaltyExemptList 127.0.0.0/8'
 printf 'root:%s\n' 'FKun@admin' | chpasswd 2>/dev/null || true
 /usr/sbin/ssh-keygen -A >/dev/null 2>&1 || true
-/usr/sbin/sshd -t 2>/tmp/droiddeck-ssh.log || exit 0
+if ! /usr/sbin/sshd -t 2>/tmp/droiddeck-ssh.log; then
+  write_sshd_conf
+  /usr/sbin/sshd -t 2>>/tmp/droiddeck-ssh.log || exit 0
+fi
 
 # DSH lives on the persistent /dd bind; keep the PATH entry after a runtime update.
 if [ -x /dd/nodejs/bin/node ]; then
@@ -43,3 +52,12 @@ if [ -x /dd/nodejs/bin/node ]; then
 fi
 
 pgrep -x sshd >/dev/null 2>&1 || /usr/sbin/sshd
+
+# dsh-app logs in as "root", which the container init maps to the session uid, while the DSH
+# state may have been created by the supervisor (real root); `dsh web` hits EACCES without this.
+DD_UID=10490 DD_GID=10490
+[ -f /dd/container/session.env ] && . /dd/container/session.env
+case ${DD_UID}:${DD_GID} in *[!0-9:]*) DD_UID=10490 DD_GID=10490 ;; esac
+for dir in /root/.dsh /root/.dsh-app-remote; do
+  [ -d "$dir" ] && chown -R "$DD_UID:$DD_GID" "$dir" 2>/dev/null || true
+done
