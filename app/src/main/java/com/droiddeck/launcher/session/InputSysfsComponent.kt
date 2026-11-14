@@ -78,10 +78,9 @@ class InputSysfsComponent(
             File(nodes, "event$node").exists() && if (node >= FIRST_VIRTUAL) {
                 node == activeVirtual && File(nodes, ".uinput-event$node.uevent").isFile
             } else {
-                // If the guest never opened /dev/uinput, publish only slot 0's ring pad instead of
-                // hiding it behind a virtual Deck pad that does not exist. Other ring slots are
-                // stale discovery files and used to show up as extra Xbox controllers.
-                !ringWithdrawn(deckPad, padType) || (!virtualPads && node == 0)
+                // Only slot 0 is a real controller ring. Other event nodes are stale discovery
+                // placeholders and used to show up as extra Xbox controllers.
+                node == 0 && (!virtualPads || !ringWithdrawn(deckPad, padType))
             }
         }.toSet()
         for (node in shown - wanted) hide(node)

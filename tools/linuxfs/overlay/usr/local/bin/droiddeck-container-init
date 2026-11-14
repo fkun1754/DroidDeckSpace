@@ -209,11 +209,6 @@ prepare_fake_devices() {
     chmod 0666 "$_dev" 2>/dev/null || true
     chown "$DD_UID:$DD_GID" "$_dev" 2>/dev/null || true
   done
-  if [ ! -e /dev/uinput ]; then
-    mknod /dev/uinput c 10 223 2>/dev/null || true
-    chmod 0666 /dev/uinput 2>/dev/null || true
-    chown "$DD_UID:$DD_GID" /dev/uinput 2>/dev/null || true
-  fi
 }
 prepare_fake_devices
 
