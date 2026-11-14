@@ -108,6 +108,7 @@ object RuntimeStore {
                 ContainerBootConfig.setRunAtBoot(context, previous, false)
                 // Switching must not leave the old DroidSpaces container running in the background.
                 runCatching { com.droiddeck.launcher.runtime.container.ContainerRuntime.stopContainer(context, previous) }
+                runCatching { RuntimeBootPolicy.apply(context) }
             }, "runtime-switch").start()
         }
     }

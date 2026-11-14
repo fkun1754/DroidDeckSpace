@@ -164,10 +164,10 @@ internal fun RuntimeManagerSection(
                             RuntimePrefs.setContainerBoot(ctx, entry.container, checked)
                             scope.launch {
                                 val error = withContext(Dispatchers.IO) {
-                                    val configError = com.droiddeck.launcher.runtime.ContainerBootConfig.setRunAtBoot(ctx, entry.container, checked)
-                                    if (configError != null) configError
-                                    else if (checked) com.droiddeck.launcher.runtime.BootServiceScript.install(ctx, entry.container)
+                                    if (checked) com.droiddeck.launcher.runtime.BootServiceScript.install(ctx, entry.container)
                                     else com.droiddeck.launcher.runtime.BootServiceScript.remove()
+                                    com.droiddeck.launcher.runtime.RuntimeBootPolicy.apply(ctx)
+                                    null
                                 }
                                 if (error != null) message = error
                             }

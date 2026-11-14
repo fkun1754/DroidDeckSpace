@@ -57,6 +57,7 @@ class App : Application() {
                     ) {
                         Thread({
                             runCatching { com.droiddeck.launcher.runtime.container.ContainerRuntime.warmUp(this) }
+                            runCatching { com.droiddeck.launcher.runtime.RuntimeBootPolicy.apply(this) }
                         }, "runtime-warmup").start()
                     }
                     return@runCatching
