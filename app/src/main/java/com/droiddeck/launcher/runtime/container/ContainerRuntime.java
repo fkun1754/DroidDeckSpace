@@ -408,7 +408,11 @@ public final class ContainerRuntime {
         invalidateStateCache();
         long appUpdated = supervisorInstallTime(context);
         long supervisorUpdated = supervisorPrefs(context).getLong("app_updated", 0);
-        List<String> desiredBinds = ContainerEnv.binds(context, spec);
+        List<String> desiredBinds = new java.util.ArrayList<>(ContainerEnv.binds(context, spec));
+        // Session-specific extra binds (the fake Deck hidraw/sysfs tree, sensors) must be part of
+        // the supervisor bind signature. Otherwise a supervisor warmed before a controller was
+        // connected is reused forever and /sys/class/hidraw stays empty across restarts.
+        desiredBinds.addAll(spec.extraBinds());
         // Fake /sys devices (Steam Deck pad, sensors) are applied by the container init at boot,
         // not by --bind. They must be part of the signature or a supervisor warmed for maintenance
         // will be reused without the session's deck-pad sysfs tree.

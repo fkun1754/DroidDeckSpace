@@ -115,7 +115,15 @@ object SteamDeckPad {
         val devices = File(base, "devices")
         val hidrawClass = File(base, "class-hidraw")
         return try {
-            FileUtils.clear(base)
+            // The guest bind-mounts these directories. Deleting and recreating them changes the
+            // inode and the mount still points at the old, now-empty directory after a session
+            // restart, which made Steam lose the fake Deck controller. Keep the directories and
+            // clear only their contents.
+            base.mkdirs()
+            devices.mkdirs()
+            FileUtils.clear(devices)
+            hidrawClass.mkdirs()
+            hidrawClass.listFiles()?.forEach { it.delete() }
             fun dir(guest: String) = File(devices, guest.removePrefix("$GUEST_DEVICES/")).apply { mkdirs() }
             fun write(guest: String, name: String, text: String) = File(dir(guest), name).writeText(text)
             fun link(file: File, target: String) {
