@@ -5,6 +5,7 @@ set -u
 
 PORT=5945
 LAN=192.168.0.0/16
+DSH_STATE=/root/.dsh-app-remote
 
 mkdir -p /run/sshd
 chmod 700 /run/sshd 2>/dev/null || true
@@ -51,13 +52,80 @@ if [ -x /dd/nodejs/bin/node ]; then
   [ -x /dd/nodejs/bin/dsh ] && ln -sf /dd/nodejs/bin/dsh /usr/local/bin/dsh
 fi
 
-pgrep -x sshd >/dev/null 2>&1 || /usr/sbin/sshd
-
-# dsh-app logs in as "root", which the container init maps to the session uid, while the DSH
-# state may have been created by the supervisor (real root); `dsh web` hits EACCES without this.
+# dsh-app logs in as "root", which this container's init maps to the app/session uid, while the
+# DSH state may have been created by the supervisor (real root); `dsh web` hits EACCES without
+# this. Keep the two world views on one uid across session modes and container restarts.
 DD_UID=10490 DD_GID=10490
 [ -f /dd/container/session.env ] && . /dd/container/session.env
 case ${DD_UID}:${DD_GID} in *[!0-9:]*) DD_UID=10490 DD_GID=10490 ;; esac
-for dir in /root/.dsh /root/.dsh-app-remote; do
+for dir in /root/.dsh "$DSH_STATE"; do
   [ -d "$dir" ] && chown -R "$DD_UID:$DD_GID" "$dir" 2>/dev/null || true
 done
+
+dsh_start_time() {
+  S=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+  S=${S##*) }
+  set -- $S
+  [ "$#" -ge 20 ] || return 1
+  shift 19
+  printf '%s\n' "$1"
+}
+
+dsh_reusable() {
+  [ -f "$DSH_STATE/web.pid" ] || return 1
+  P=$(cat "$DSH_STATE/web.pid" 2>/dev/null) || return 1
+  [ -n "$P" ] || return 1
+  kill -0 "$P" 2>/dev/null || return 1
+  [ "$(awk '/^Uid:/{print $2}' "/proc/$P/status" 2>/dev/null)" = "$DD_UID" ] || return 1
+  A=$(dsh_start_time "$P") || return 1
+  B=$(cat "$DSH_STATE/web.st" 2>/dev/null) || return 1
+  [ -n "$A" ] && [ "$A" = "$B" ]
+}
+
+# dsh-app reuses a running `dsh web` it started itself, so launching one here means a session
+# start (which may recreate the container) never leaves the app without a server. The sshd
+# listener is started last so the app cannot connect in the middle of this.
+start_dsh() {
+  [ -x /usr/local/bin/dsh ] || return 0
+  command -v setpriv >/dev/null 2>&1 || return 0
+  dsh_reusable && return 0
+  if [ -f "$DSH_STATE/web.pid" ]; then
+    P=$(cat "$DSH_STATE/web.pid" 2>/dev/null)
+    if [ -n "$P" ] && kill -0 "$P" 2>/dev/null; then
+      CMD=$(tr '\0' ' ' <"/proc/$P/cmdline" 2>/dev/null || true)
+      U=$(awk '/^Uid:/{print $2}' "/proc/$P/status" 2>/dev/null)
+      case "$CMD" in
+        *'dsh web --host 127.0.0.1 --port 0 --no-open'*) [ "$U" = "$DD_UID" ] && kill "$P" 2>/dev/null ;;
+      esac
+    fi
+    rm -f "$DSH_STATE/web.pid"
+  fi
+  mkdir -p "$DSH_STATE" 2>/dev/null || return 0
+  chown "$DD_UID:$DD_GID" "$DSH_STATE" 2>/dev/null || true
+  chmod 700 "$DSH_STATE" 2>/dev/null || true
+  printf '%s' 'dsh web' >"$DSH_STATE/web.cmd"
+  : >"$DSH_STATE/web.log"
+  chown "$DD_UID:$DD_GID" "$DSH_STATE/web.cmd" "$DSH_STATE/web.log" 2>/dev/null || true
+  nohup setpriv --reuid="$DD_UID" --regid="$DD_GID" --groups="${DD_GROUPS:-$DD_GID}" \
+    --inh-caps=-all --bounding-set=-all -- \
+    env HOME=/root USER=root LOGNAME=root SHELL=/bin/bash NO_COLOR=1 TMPDIR=/tmp \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games \
+    /usr/local/bin/dsh web --host 127.0.0.1 --port 0 --no-open \
+    </dev/null >>"$DSH_STATE/web.log" 2>&1 &
+  P=$!
+  dsh_start_time "$P" >"$DSH_STATE/web.st" 2>/dev/null || true
+  printf '%s\n' "$P" >"$DSH_STATE/web.pid"
+  chown "$DD_UID:$DD_GID" "$DSH_STATE/web.pid" "$DSH_STATE/web.st" 2>/dev/null || true
+  i=0
+  while [ "$i" -lt 80 ]; do
+    grep -Eq 'https?://[^ ]*[?&]token=' "$DSH_STATE/web.log" 2>/dev/null && return 0
+    kill -0 "$P" 2>/dev/null || break
+    sleep 0.25 2>/dev/null || sleep 1
+    i=$((i + 1))
+  done
+  echo "droiddeck-dsh: dsh web did not become ready" >>"$DSH_STATE/web.log"
+  return 1
+}
+start_dsh
+
+pgrep -x sshd >/dev/null 2>&1 || /usr/sbin/sshd
