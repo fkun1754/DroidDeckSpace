@@ -175,6 +175,10 @@ chown -R "$DD_UID:$DD_GID" /dev/input 2>/dev/null || true
 # fake evdev nodes accessible by mode as a fallback.
 chmod -R a+rwX /dev/input 2>/dev/null || true
 chmod 0755 /dev/input 2>/dev/null || true
+# Wine/Steam's SysV shim creates this directory as root before the session drops privileges.
+# Pre-create it world-writable so the session uid can create POSIX semaphores.
+mkdir -p /dev/shm/wnsysv 2>/dev/null || true
+chmod 1777 /dev/shm /dev/shm/wnsysv 2>/dev/null || true
 
 for dir in /run/droiddeck /run/droiddeck-hud /run/dbus; do
   mkdir -p "$dir" 2>/dev/null || true

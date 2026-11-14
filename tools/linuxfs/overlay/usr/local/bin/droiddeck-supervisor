@@ -112,6 +112,9 @@ echo "supervisor ready pid=$$" >"$STATUS"
 date +%s >"$HEARTBEAT" 2>/dev/null
 log "supervisor ready pid=$$"
 start_base_services
+# Wine/Steam's SysV shim needs a writable /dev/shm/wnsysv; pre-create it with a permissive mode.
+mkdir -p /dev/shm/wnsysv 2>/dev/null || true
+chmod 1777 /dev/shm /dev/shm/wnsysv 2>/dev/null || true
 
 while :; do
   if [ -f "$CMD_FILE" ]; then
