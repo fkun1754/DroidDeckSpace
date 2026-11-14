@@ -164,7 +164,9 @@ chmod 1777 /tmp 2>/dev/null || true
 # creates on the host side and bind-mounts here, so it must not be created as a directory.
 # DroidSpaces can recreate the private /dev/shm with root ownership across container restarts;
 # Steam's POSIX semaphores need the session uid to create files there.
-chown "$DD_UID:$DD_GID" /dev/shm 2>/dev/null || true
+# Contents too: Wine/Steam keeps /dev/shm/wnsysv and POSIX sem files owned by whichever uid
+# created them; a root-owned wnsysv makes Steam fail with sem_open EACCES.
+chown -R "$DD_UID:$DD_GID" /dev/shm 2>/dev/null || true
 chmod 0755 /dev/shm 2>/dev/null || true
 
 for dir in /run/droiddeck /run/droiddeck-hud /run/dbus; do
