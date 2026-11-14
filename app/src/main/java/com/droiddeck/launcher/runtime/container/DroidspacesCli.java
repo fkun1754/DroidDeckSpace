@@ -58,9 +58,8 @@ public final class DroidspacesCli {
         if (spec.netHost()) argv.add("--net=host");
         if (spec.gpu()) argv.add("--gpu");
         for (String bind : spec.binds()) argv.add("--bind=" + bind);
-        // Wipe whatever config droidspaces auto-detected before the CLI flags land, so a leftover
-        // config cannot contribute binds/hostname the current start does not set.
-        argv.add("--reset");
+        // Do not pass --reset: DroidSpaces removes the container registration on exit for a
+        // reset start. cleanStaleContainerConfig() already removes stale configs before this call.
         argv.add("start");
         return SuShell.exec(SuShell.command(argv), START_TIMEOUT_MS);
     }
