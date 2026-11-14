@@ -115,6 +115,9 @@ start_base_services
 # Wine/Steam's SysV shim needs a writable /dev/shm/wnsysv; pre-create it with a permissive mode.
 mkdir -p /dev/shm/wnsysv 2>/dev/null || true
 chmod 1777 /dev/shm /dev/shm/wnsysv 2>/dev/null || true
+# DroidSpaces may reset these to root after the container init; the supervisor runs as root and
+# can repair them before any session starts.
+chmod -R a+rwX /dev/input 2>/dev/null || true
 
 while :; do
   if [ -f "$CMD_FILE" ]; then

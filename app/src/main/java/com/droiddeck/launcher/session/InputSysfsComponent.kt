@@ -59,12 +59,22 @@ class InputSysfsComponent(
         }
     }
 
+    private fun hasVirtualPads(): Boolean =
+        nodes.listFiles { file -> file.name.startsWith(".uinput-event") && file.name.endsWith(".uevent") }
+            ?.isNotEmpty() == true
+
     @Synchronized
     fun sync() {
         if (!running) return
+        val virtualPads = hasVirtualPads()
         val wanted = (0 until NODE_LIMIT).filter { node ->
-            File(nodes, "event$node").exists() && if (node >= FIRST_VIRTUAL) File(nodes, ".uinput-event$node.uevent").isFile
-            else !ringWithdrawn(deckPad, padType)
+            File(nodes, "event$node").exists() && if (node >= FIRST_VIRTUAL) {
+                File(nodes, ".uinput-event$node.uevent").isFile
+            } else {
+                // If the guest never opened /dev/uinput, publish the ring pad itself instead of
+                // hiding it behind a virtual Deck pad that does not exist.
+                !ringWithdrawn(deckPad, padType) || !virtualPads
+            }
         }.toSet()
         for (node in shown - wanted) hide(node)
         for (node in wanted - shown) show(node)
