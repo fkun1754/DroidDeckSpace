@@ -23,9 +23,6 @@ class InputSysfsComponent(
     private var running = false
 
     fun prepare(): Boolean = try {
-        // Old sessions can leave .uinput-event* metadata behind; exposing all of them made Steam
-        // see several Xbox 360 pads. A new session starts with none.
-        nodes.listFiles { file -> file.name.startsWith(".uinput-event") }?.forEach { it.delete() }
         FileUtils.clear(devices)
         FileUtils.clear(classDir)
         devices.mkdirs()
@@ -62,25 +59,17 @@ class InputSysfsComponent(
         }
     }
 
-    private fun hasVirtualPads(): Boolean =
-        nodes.listFiles { file -> file.name.startsWith(".uinput-event") && file.name.endsWith(".uevent") }
-            ?.isNotEmpty() == true
-
     @Synchronized
     fun sync() {
         if (!running) return
-        val virtualPads = hasVirtualPads()
-        val activeVirtual = nodes.listFiles { file ->
-            file.name.startsWith(".uinput-event") && file.name.endsWith(".uevent")
-        }?.mapNotNull { file -> Regex("\\.uinput-event(\\d+)\\.uevent").matchEntire(file.name)?.groupValues?.get(1)?.toIntOrNull() }
-            ?.maxOrNull()
-        val wanted = (0 until NODE_LIMIT).filter { node ->
+        // Deck/Steam-controller mode uses the fake hidraw HID tree. Publishing the uinput/evdev
+        // fallback as well makes Steam list an extra XBOX360 controller and route input there.
+        // In that mode hide every evdev pad; keep only the fake hidraw controller.
+        val wanted = if (deckPad) emptySet() else (0 until NODE_LIMIT).filter { node ->
             File(nodes, "event$node").exists() && if (node >= FIRST_VIRTUAL) {
-                node == activeVirtual && File(nodes, ".uinput-event$node.uevent").isFile
+                File(nodes, ".uinput-event$node.uevent").isFile
             } else {
-                // Only slot 0 is a real controller ring. Other event nodes are stale discovery
-                // placeholders and used to show up as extra Xbox controllers.
-                node == 0 && (!virtualPads || !ringWithdrawn(deckPad, padType))
+                !ringWithdrawn(deckPad, padType)
             }
         }.toSet()
         for (node in shown - wanted) hide(node)
