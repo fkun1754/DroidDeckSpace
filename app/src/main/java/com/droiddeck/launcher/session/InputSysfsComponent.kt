@@ -23,6 +23,9 @@ class InputSysfsComponent(
     private var running = false
 
     fun prepare(): Boolean = try {
+        // Old sessions can leave .uinput-event* metadata behind; exposing all of them made Steam
+        // see several Xbox 360 pads. A new session starts with none.
+        nodes.listFiles { file -> file.name.startsWith(".uinput-event") }?.forEach { it.delete() }
         FileUtils.clear(devices)
         FileUtils.clear(classDir)
         devices.mkdirs()
@@ -67,13 +70,18 @@ class InputSysfsComponent(
     fun sync() {
         if (!running) return
         val virtualPads = hasVirtualPads()
+        val activeVirtual = nodes.listFiles { file ->
+            file.name.startsWith(".uinput-event") && file.name.endsWith(".uevent")
+        }?.mapNotNull { file -> Regex("\\.uinput-event(\\d+)\\.uevent").matchEntire(file.name)?.groupValues?.get(1)?.toIntOrNull() }
+            ?.maxOrNull()
         val wanted = (0 until NODE_LIMIT).filter { node ->
             File(nodes, "event$node").exists() && if (node >= FIRST_VIRTUAL) {
-                File(nodes, ".uinput-event$node.uevent").isFile
+                node == activeVirtual && File(nodes, ".uinput-event$node.uevent").isFile
             } else {
-                // If the guest never opened /dev/uinput, publish the ring pad itself instead of
-                // hiding it behind a virtual Deck pad that does not exist.
-                !ringWithdrawn(deckPad, padType) || !virtualPads
+                // If the guest never opened /dev/uinput, publish only slot 0's ring pad instead of
+                // hiding it behind a virtual Deck pad that does not exist. Other ring slots are
+                // stale discovery files and used to show up as extra Xbox controllers.
+                !ringWithdrawn(deckPad, padType) || (!virtualPads && node == 0)
             }
         }.toSet()
         for (node in shown - wanted) hide(node)
