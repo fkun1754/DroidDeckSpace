@@ -477,6 +477,22 @@ public final class ContainerRuntime {
      * running, so a finished session no longer takes the runtime (and any base service such as
      * DSH) down with it.
      */
+    /**
+     * DroidSpaces recreates /dev/input and /dev/shm as root on some restarts. Repair them as root
+     * for every session, not only when the container itself is created: a session restart can reuse
+     * the running container and otherwise skip the init phase entirely.
+     */
+    private static void repairSessionFilesystem(Context context, String name) {
+        try {
+            DroidspacesCli.run(context, name, java.util.List.of("sh", "-c",
+                    "chmod -R a+rwX /dev/input 2>/dev/null; " +
+                            "mkdir -p /dev/shm/wnsysv 2>/dev/null; " +
+                            "chmod 1777 /dev/shm /dev/shm/wnsysv 2>/dev/null"), 5_000);
+        } catch (RuntimeException failure) {
+            android.util.Log.w("ContainerRuntime", "session filesystem repair failed", failure);
+        }
+    }
+
     public static ContainerSession startSupervisorSession(Context context, SessionSpec session) {
         if (!isAvailable(context)) throw new IllegalStateException(unavailableMessage(context));
         SessionSpec spec = session == null
@@ -493,6 +509,7 @@ public final class ContainerRuntime {
             String name = ContainerPaths.containerName(context);
             stopPreviousSupervisedSession(context);
             ensureSupervisorContainer(context, spec);
+            repairSessionFilesystem(context, name);
             // Wait until the supervisor has written its first status line.
             long readyDeadline = System.currentTimeMillis() + 10_000;
             while (System.currentTimeMillis() < readyDeadline && readSupervisorStatus(context).isEmpty()) {
@@ -552,6 +569,7 @@ public final class ContainerRuntime {
             String name = ContainerPaths.containerName(context);
             stopPreviousSupervisedSession(context);
             ensureSupervisorContainer(context, spec);
+            repairSessionFilesystem(context, name);
             long readyDeadline = System.currentTimeMillis() + 10_000;
             while (System.currentTimeMillis() < readyDeadline && readSupervisorStatus(context).isEmpty()) {
                 try {
