@@ -57,7 +57,11 @@ public final class DroidspacesCli {
         argv.add("--init=" + spec.init());
         if (spec.netHost()) argv.add("--net=host");
         if (spec.gpu()) argv.add("--gpu");
-        for (String bind : spec.binds()) argv.add("--bind=" + bind);
+        for (String bind : spec.binds()) {
+            // A raw path (no :DEST) makes droidspaces reject the whole start command.
+            if (bind.indexOf(':') < 0) argv.add("--bind=" + bind + ":" + bind);
+            else argv.add("--bind=" + bind);
+        }
         // Do not pass --reset: DroidSpaces removes the container registration on exit for a
         // reset start. cleanStaleContainerConfig() already removes stale configs before this call.
         argv.add("start");
