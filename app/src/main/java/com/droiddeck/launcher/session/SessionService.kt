@@ -632,6 +632,25 @@ class SessionService : Service() {
 
         val fakeInputDir = File(sessionRoot, "dev/input").apply { mkdirs() }
         val controllersOn = !File(Environment.getExternalStorageDirectory(), NO_PAD_SWITCH).exists()
+        if (controllersOn) {
+            // Preflight: never open the guest with no controller and then have Steam fall back to
+            // a dead input path. Give a powered-on pad a few seconds to enumerate, then fail the
+            // session instead of creating a controller-less one.
+            var waitedMs = 0
+            while (!com.droiddeck.launcher.input.PadBridge.anyControllerConnected() && waitedMs < 5_000) {
+                Thread.sleep(250L)
+                waitedMs += 250
+            }
+            if (!com.droiddeck.launcher.input.PadBridge.anyControllerConnected()) {
+                Log.w(TAG, "controller preflight failed; not starting the session")
+                SessionEvents.record("controller.preflight_failed", mapOf("waitedMs" to waitedMs))
+                failSession(gen, "CONTROLLER_MISSING",
+                    "No controller detected. Connect or power on the controller, then start again.", -1)
+                stopSession(-1, gen)
+                return
+            }
+            SessionEvents.record("controller.preflight_ok", mapOf("waitedMs" to waitedMs))
+        }
         SessionState.deckPad = false
         deckBinds = emptyList()
         inputSysfs = null
@@ -709,29 +728,15 @@ class SessionService : Service() {
         // Start the supervisor container in the background while the rest of the session is staged.
         ContainerRuntime.prewarmSupervisorSession(this, spec)
 
-        // Synchronous startup: all App-side components (input sysfs/udev, audio, display hooks)
-        // must be ready before the guest starts. The previous asynchronous reorder started the
-        // guest before the input/udev and D-Bus/audio environment was complete, which broke
-        // controller enumeration and Steam CEF's transport.
-        val networkLink = LinuxNetworkLinkComponent(this, root)
-        networkLink.attach(this)
-        networkLink.publish()
-        components.add(networkLink)
-        val deviceControls = com.droiddeck.launcher.runtime.DeviceControlsComponent(this, root) { activityVisible && screenOn }
-        deviceControls.attach(this)
-        deviceControls.publish()
-        components.add(deviceControls)
-        try {
-            components.forEach { it.start() }
-        } catch (e: Exception) {
-            Log.e(TAG, "Could not start the session components", e)
-            failSession(gen, "COMPONENT_START_FAILED", e.message ?: "Session component could not be started", -1)
-            stopSession(-1, gen)
-            return
-        }
+        // Input sysfs/udev must exist before Steam/gamescope enumerate controllers, otherwise an
+        // external pad that is connected at launch is missed. Start only that component early.
+        val earlyInputParts = components.filter { it is InputSysfsComponent }
+        earlyInputParts.forEach { part -> runCatching { part.start() } }
 
+        // Start the guest now, in parallel with the remaining App-side components. Waiting for
+        // every component before sending start was adding ~3 s to desktop hot starts.
         val session = try {
-            ContainerRuntime.startSupervisorSession(this, spec)
+            ContainerRuntime.startSupervisorSessionAsync(this, spec)
         } catch (e: Exception) {
             Log.e(TAG, "the container session could not be started", e)
             failSession(gen, "CONTAINER_START_FAILED", e.message ?: "The container session could not be started", -1)
@@ -761,6 +766,27 @@ class SessionService : Service() {
             ) { gen == sessionGen && SessionState.running }
         }
 
+        val networkLink = LinuxNetworkLinkComponent(this, root)
+        networkLink.attach(this)
+        networkLink.publish()
+        components.add(networkLink)
+        val deviceControls = com.droiddeck.launcher.runtime.DeviceControlsComponent(this, root) { activityVisible && screenOn }
+        deviceControls.attach(this)
+        deviceControls.publish()
+        components.add(deviceControls)
+        if (gen != sessionGen || !SessionState.running) {
+            Log.i(TAG, "session stopped while it was starting; not launching it")
+            if (gen == sessionGen) components.clear()
+            return
+        }
+        try {
+            components.forEach { if (it !in earlyInputParts) it.start() }
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not start the session components", e)
+            failSession(gen, "COMPONENT_START_FAILED", e.message ?: "Session component could not be started", -1)
+            stopSession(-1, gen)
+            return
+        }
 
         watchLaunchRequests(sessionRoot)
         watchSyncWanted(root)
@@ -1810,8 +1836,8 @@ class SessionService : Service() {
                     .putExtra(EXTRA_STEAM_UI, ui)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 if (url.isNotEmpty()) next.putExtra(EXTRA_STEAM_URL, url)
-                SessionState.queueRelaunch(next)
-                android.os.Handler(android.os.Looper.getMainLooper()).post { stopSession(0, relaunch = true) }
+                SessionState.relaunch = next
+                android.os.Handler(android.os.Looper.getMainLooper()).post { stopSession(0) }
             }
         }
         watcher.startWatching()
@@ -2108,7 +2134,7 @@ class SessionService : Service() {
         }
     }
 
-    private fun stopSession(status: Int, gen: Int? = null, relaunch: Boolean = false) {
+    private fun stopSession(status: Int, gen: Int? = null) {
         if (gen != null && gen != sessionGen) {
             Log.i(TAG, "ignoring a stop from session $gen; session $sessionGen is current")
             return
@@ -2119,7 +2145,6 @@ class SessionService : Service() {
             cancelQueuedSteamGame()
             gameExitWatchToken++
             if (!SessionState.running) return
-            if (relaunch) SessionState.confirmRelaunchStop()
             SessionEvents.record("guest.exited", mapOf("status" to status))
             SessionEvents.transition(SessionPhase.STOPPING, "session.stopping", mapOf("status" to status))
             SessionState.running = false
