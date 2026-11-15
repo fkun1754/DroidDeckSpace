@@ -633,20 +633,23 @@ class SessionService : Service() {
         val fakeInputDir = File(sessionRoot, "dev/input").apply { mkdirs() }
         val controllersOn = !File(Environment.getExternalStorageDirectory(), NO_PAD_SWITCH).exists()
         if (controllersOn) {
+            // Official logic: require the input bridge to be alive, but not a physically connected
+            // controller. A pad may connect/hotplug after the session has started.
             var waitedMs = 0
-            while (!com.droiddeck.launcher.input.PadBridge.anyControllerConnected() && waitedMs < 5_000) {
-                Thread.sleep(250L)
-                waitedMs += 250
+            while ((SessionState.padBridge == null || !File(fakeInputDir, "event0").isFile) && waitedMs < 2_000) {
+                Thread.sleep(100L)
+                waitedMs += 100
             }
-            if (!com.droiddeck.launcher.input.PadBridge.anyControllerConnected()) {
-                Log.w(TAG, "controller preflight failed; not starting the session")
-                SessionEvents.record("controller.preflight_failed", mapOf("waitedMs" to waitedMs))
-                failSession(gen, "CONTROLLER_MISSING",
-                    "No controller detected. Connect or power on the controller, then start again.", -1)
+            if (SessionState.padBridge == null || !File(fakeInputDir, "event0").isFile) {
+                Log.w(TAG, "controller input bridge did not initialize; not starting the session")
+                SessionEvents.record("controller.input_not_ready", mapOf("waitedMs" to waitedMs))
+                failSession(gen, "CONTROLLER_INPUT_NOT_READY",
+                    "The controller input service did not start. Please retry.", -1)
                 stopSession(-1, gen)
                 return
             }
-            SessionEvents.record("controller.preflight_ok", mapOf("waitedMs" to waitedMs))
+            SessionState.padBridge?.syncConnectedControllers()
+            SessionEvents.record("controller.input_ready", mapOf("waitedMs" to waitedMs))
         }
         SessionState.deckPad = false
         deckBinds = emptyList()
