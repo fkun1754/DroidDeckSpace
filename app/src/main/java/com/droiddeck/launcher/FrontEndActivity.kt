@@ -716,10 +716,14 @@ class FrontEndActivity : ComponentActivity() {
         com.droiddeck.launcher.ui.LaunchOrigin.flooding = null
         val waiting = CompatLaunch(Intent(next), com.droiddeck.launcher.session.LoadingState(this), menuInstall)
         compatLaunch = waiting
+        var waitedInstallMs = 0L
         val poll = object : Runnable {
             override fun run() {
                 if (isDestroyed || isFinishing || compatLaunch !== waiting) return
                 if (protons.protonBusyId != null || ProtonExtras.installInProgress) {
+                    waitedInstallMs += 250L
+                    val stalled = waitedInstallMs > 180_000L || ProtonExtras.installFailure != null
+                    if (!stalled) {
                     waiting.menuInstall = waiting.menuInstall || protons.protonBusyId != null
                     val percent = if (protons.protonBusyId != null) protons.protonPercent else -1
                     val stage = protons.protonStage ?: getString(R.string.load_compat_wait)
@@ -729,6 +733,17 @@ class FrontEndActivity : ComponentActivity() {
                     waiting.loading.tick()
                     ui.postDelayed(this, 250)
                     return
+                    }
+                    // The install stalled: clear its in-memory state and continue with the session
+                    // instead of waiting forever. The tool can be retried from Setup later.
+                    val failure = ProtonExtras.installFailure ?: "Compatibility tool install timed out"
+                    protons.protonBusyId = null
+                    protons.protonStage = null
+                    protons.protonPercent = -1
+                    protons.protonProblem = failure
+                    waiting.menuInstall = false
+                    ProtonExtras.resetInstallState()
+                    android.widget.Toast.makeText(this@FrontEndActivity, failure, android.widget.Toast.LENGTH_LONG).show()
                 }
                 if (!compatLaunchVisible) { ui.postDelayed(this, 250); return }
                 val problem = protons.protonProblem.takeIf { waiting.menuInstall }
@@ -1099,6 +1114,9 @@ class FrontEndActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A background install can be killed with the process; never let its in-memory state block
+        // this launch with an endless "Preparing compatibility tools" screen.
+        com.droiddeck.launcher.session.ProtonExtras.resetInstallState()
         drivers.restartBlocked = ::runtimeChangesBlocked
         drivers.loadTpUbwcMode()
         pendingSessionLogExport = savedInstanceState?.getString(KEY_PENDING_SESSION_LOG_EXPORT)?.let(::File)
