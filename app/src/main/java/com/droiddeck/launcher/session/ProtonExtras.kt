@@ -21,19 +21,9 @@ object ProtonExtras {
     @Volatile
     var installInProgress = false
         private set
-    @Volatile
-    var installFailure: String? = null
-        private set
-    @Volatile
-    private var lastProgressAt = 0L
-    private var installWatchdog: Thread? = null
-    private const val INSTALL_STALL_MS = 120_000L
-
     /** Called when the UI process starts, so a killed/stalled install cannot block the next launch. */
     fun resetInstallState() {
         installInProgress = false
-        installFailure = null
-        lastProgressAt = 0L
     }
     @Volatile
     private var replacing = false
@@ -229,28 +219,7 @@ object ProtonExtras {
     fun install(context: Context, tool: Tool, onProgress: (String, Int) -> Unit): String? {
         if (installInProgress) return context.getString(R.string.pextra_busy)
         installInProgress = true
-        installFailure = null
-        lastProgressAt = System.currentTimeMillis()
-        installWatchdog = Thread({
-            while (installInProgress) {
-                try { Thread.sleep(5_000L) } catch (_: InterruptedException) { return@Thread }
-                if (installInProgress && System.currentTimeMillis() - lastProgressAt > INSTALL_STALL_MS) {
-                    installFailure = "Compatibility tool install stalled (no progress for 2 minutes)"
-                    installInProgress = false
-                    Log.w(TAG, installFailure!!)
-                    return@Thread
-                }
-            }
-        }, "proton-install-watchdog").apply { isDaemon = true; start() }
-        val wrapped: (String, Int) -> Unit = { label, value ->
-            lastProgressAt = System.currentTimeMillis()
-            onProgress(label, value)
-        }
-        return try { installNow(context, tool, wrapped) } finally {
-            installInProgress = false
-            installWatchdog?.interrupt()
-            installWatchdog = null
-        }
+        return try { installNow(context, tool, onProgress) } finally { installInProgress = false }
     }
 
     private fun installNow(context: Context, tool: Tool, onProgress: (String, Int) -> Unit): String? {
